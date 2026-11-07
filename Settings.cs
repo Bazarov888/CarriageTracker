@@ -105,7 +105,7 @@ static class Settings
         AnnounceVanilla = cfg.Bind("Chat", "AnnounceVanilla", true,
             "Also announce caravans the game spawned by itself next to a player. false = only caravans started by the mod.");
         Welcome = cfg.Bind("Chat", "Welcome", true,
-            "Two lines to a player who has just come into the world: what the mod does and how to pick the language (.cv lang).");
+            "A line to a player who has just come into the world: what the mod does and how to pick the language (.cv lang). A player who hasn't picked one gets it in English and in Russian.");
         WelcomeEn = cfg.Bind("Chat", "WelcomeEn", "",
             "Your own English welcome line instead of the mod's. Empty = the mod's. Color tags like <color=#7CFC7C>.cv l</color> work. At most about 450 bytes.");
         WelcomeRu = cfg.Bind("Chat", "WelcomeRu", "",
@@ -222,7 +222,10 @@ static class Settings
     public static string Color(ConfigEntry<string> entry, string fallback)
     {
         string v = (entry.Value ?? "").Trim();
-        return v.Length >= 4 && v[0] == '#' ? v : fallback;
+        v = v.Length >= 4 && v[0] == '#' ? v : fallback;
+        // White by name, not as #FFFFFF: on 07.11 a player's chat filter masked "FFFFFF>234" of
+        // <color=#FFFFFF>234 m and the broken tag showed up as text.
+        return v.Equals("#FFFFFF", StringComparison.OrdinalIgnoreCase) || v.Equals("#FFF", StringComparison.OrdinalIgnoreCase) ? "white" : v;
     }
 
     // ExcludedRoutes is parsed again only when its text changes.

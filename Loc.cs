@@ -110,7 +110,7 @@ static class L
         ["note.frozen"] = " (froze mid-route, no players near; wakes up when you come near; {0}{1})",
 
         ["announce.title"] = "CARRIAGE ON THE ROAD: {0}",
-        ["announce.where"] = "{0} m, {1}.",
+        ["announce.where"] = "{1}, {0} m.",
         ["announce.mark"] = "Map marker:",
 
         ["stats.none"] = "No check has run yet.",
@@ -249,7 +249,7 @@ static class L
         ["note.frozen"] = " (застыл посреди маршрута, рядом нет игроков; оживёт, когда подойдёшь; {0}{1})",
 
         ["announce.title"] = "КАРАВАН В ПУТИ: {0}",
-        ["announce.where"] = "{0} м, {1}.",
+        ["announce.where"] = "{1}, {0} м.",
         ["announce.mark"] = "Метка на карте:",
 
         ["stats.none"] = "Проверка ещё не выполнялась.",

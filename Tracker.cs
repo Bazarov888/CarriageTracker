@@ -57,7 +57,9 @@ static class Announcer
                     string head = $"<color={title}><b>{L.T("announce.title", name)}</b></color>";
                     if (hasCharacter)
                     {
-                        where = L.T("announce.where", Math.Round(dist), Caravans.Direction(pos.x - me.x, pos.z - me.z)) + " ";
+                        // Direction first: a chat filter masked a color code followed by digits (07.11, see Settings.Color).
+                        string w = L.T("announce.where", Math.Round(dist), Caravans.Direction(pos.x - me.x, pos.z - me.z));
+                        where = (w.Length > 0 ? char.ToUpperInvariant(w[0]) + w.Substring(1) : w) + " ";
                         int n = NumberFor(me, cart);
                         mark = n == 1 ? ".cv m" : n > 1 ? $".cv m {n}" : ".cv l";
                     }
@@ -114,8 +116,8 @@ static class Chat
     }
 }
 
-// Two lines for a player who has just come into the world: what the mod does and how to pick the language.
-// A player who picked a language gets it in that one, others in English and Russian.
+// A line for a player who has just come into the world: what the mod does and how to pick the language.
+// A player who picked a language gets it in that one, others in English and in Russian (two lines).
 static class Greeter
 {
     static readonly HashSet<ulong> InWorld = new();
@@ -396,7 +398,16 @@ static class Loot
                             (hasTimer ? $"the game would remove it in {Math.Round(Math.Max(0, timer.EndTime - now))} s" : "no removal timer"));
             }
             if (f.Empty && !c.Empty)
-                Plugin.Info($"CarriageTracker: loot container of {f.Route} at {At(f.Pos)} emptied after {Math.Round(now - c.First)} s");
+            {
+                string after = "";
+                if (Kept.Contains(key) && hasTimer && LootLogic.EmptiedEndTime(now, timer.EndTime) is double soon)
+                {
+                    timer.EndTime = soon;
+                    em.SetComponentData(f.Entity, timer);
+                    after = $", the game removes it in {Math.Round(soon - now)} s";
+                }
+                Plugin.Info($"CarriageTracker: loot container of {f.Route} at {At(f.Pos)} emptied after {Math.Round(now - c.First)} s{after}");
+            }
             c.Empty = f.Empty;
             c.Pos = f.Pos;
             if (f.Empty || keep <= 0 || !hasTimer) continue;
