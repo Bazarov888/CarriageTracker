@@ -32,7 +32,7 @@ With the defaults nothing has to be set up:
 - every online player gets the announcement;
 - the game keeps spawning carriages the vanilla way too, next to players.
 
-The first start in each act comes one interval after the server starts (and after `.cv auto` or `.cv source`), and only while someone is online. To see one at once, run `.cv an` as an admin. Admin commands need the game's admin rights: your SteamID in `adminlist.txt` and `adminauth` in the console.
+The first start in each act comes one interval after the server starts (and after `.cv auto <minutes>` or `.cv source`), and only while someone is online. To see one at once, run `.cv an` as an admin. Admin commands need the game's admin rights: your SteamID in `adminlist.txt` and `adminauth` in the console.
 
 The settings most servers change:
 
@@ -147,7 +147,7 @@ Runs on the author's server together with Bloodcraft 1.13.26, KindredCommands 2.
 
 With KindredPortals installed, icons of stopped carriages (and of all carriages with `IconMode = proxy`) are visible to everyone even with `GlobalIcons = false`: KindredPortals makes every icon on a marker object global, and those icons hang on such markers.
 
-At the first check after the server starts, the mod checks every game field it relies on. If a game update has changed one it can't do without, the log says which, and starting carriages and `Source = Mod` are turned off while tracking, icons and announcements go on. If a less important one is missing, only putting routes back to their first stop is off.
+At the first check after the server starts, the mod checks every game field it relies on. If a game update has changed one it can't do without, the log says which, and starting carriages and `Source = Mod` are turned off while tracking, icons and announcements go on. If a less important one is missing, routes aren't put back to their first stop and stop numbers may be unknown.
 
 ## Good to know
 
@@ -207,7 +207,7 @@ License: MIT.
 | `.cv a` | Твой акт и маршруты, которые тебе достаются |
 | `.cv lang <ru или en>` | Язык сообщений мода для тебя |
 
-Команды админа, настройки и подробности про акты описаны выше, в английской части. Коротко: по умолчанию каждые 20 минут в каждом акте с игроками онлайн выходит караван; первый — через 20 минут после запуска сервера, сразу можно запустить командой админа `.cv an`. Акт игрока считается по выпитым V Blood, акт маршрута — по региону (Farbane I, Dunley II, Silverlight и Oakveil IV). Игроки III акта, где в игре повозок нет, получают караваны IV акта.
+Команды админа, настройки и подробности про акты описаны выше, в английской части. Коротко: по умолчанию каждые 20 минут в каждом акте с игроками онлайн выходит караван; первый — через один интервал (по умолчанию 20 минут) после запуска сервера, сразу можно запустить командой админа `.cv an`. Акт игрока считается по выпитым V Blood, акт маршрута — по региону (Farbane I, Dunley II, Silverlight и Oakveil IV). Игроки III акта, где в игре повозок нет, получают караваны IV акта.
 
 **Удаление.** Сначала выполни в чате `.cv cleanup` (админ): мод вернёт маршрутам настройки игры и уберёт свои значки. Потом останови сервер обычным способом, чтобы мир сохранился, удали `BepInEx/plugins/CarriageTracker` и запусти сервер. Без этого маршруты, заблокированные при `Source = Mod`, останутся без караванов игры, а значки мода — на карте.
 

@@ -277,5 +277,5 @@ keeps `Start`, auto-start and `ApplySource` from changing the world until the se
 - `LanguageMiddleware` is added to VCF's global middleware list, so it sees every command of every mod; it acts
   only on commands declared in this assembly.
 - Fields of `UnitCompositionSpawner` are set by reflection on a boxed copy (`SetField`); `GameCheck` checks at the first
-  check that they all exist and turns starts off if one a start can't be undone without is missing.
+  check that they all exist and turns starts off if a field needed to undo a start is missing.
 - `Caravans.Field` / `GameTypes.Find` read some game types by name, because their namespace differs between game builds.
