@@ -32,6 +32,8 @@ With the defaults nothing has to be set up:
 - every online player gets the announcement;
 - the game keeps spawning carriages the vanilla way too, next to players.
 
+The first start in each act comes one interval after the server starts (and after `.cv auto` or `.cv source`), and only while someone is online. To see one at once, run `.cv an` as an admin. Admin commands need the game's admin rights: your SteamID in `adminlist.txt` and `adminauth` in the console.
+
 The settings most servers change:
 
 | Want | Setting |
@@ -63,10 +65,10 @@ For admins:
 |---|---|
 | `.cv start <number>` | Start a carriage on a route from `.cv r` right now |
 | `.cv ss` | How the carriages started by the mod are doing |
-| `.cv stop` | Stop looking after started carriages and give their routes the normal settings back |
+| `.cv stop` | Stop looking after started carriages and give their routes the normal settings back (auto-start goes on; `.cv auto 0` turns it off) |
 | `.cv auto [minutes]` | Auto-start status; a number sets the interval, `0` turns it off |
 | `.cv an` | Run auto-start now, ignoring the interval |
-| `.cv source <mod, game or both>` | Who starts carriages |
+| `.cv source [mod, game or both]` | Who starts carriages; without a value shows it |
 | `.cv icon <name or number>` | The map icon: `merchant`, `unknown`, `vblood` or a number from `.cv icons` |
 | `.cv icons [filter] [page]` | The game's map icons with their numbers |
 | `.cv mode <direct or proxy>` | Icon on the carriage itself, or on a separate marker that follows it |
@@ -113,9 +115,9 @@ The Draculin prison carriage counts as Act II, as Dunley's hard one, even though
 | Chat | AnnounceVanilla | `true` | Also announce carriages the game spawned; `false` = only the mod's |
 | Chat | RouteCommandsForAll | `true` | `.cv r` and `.cv rm` for everyone; `false` = admins only |
 | Chat | ShowOthersActs | `true` | `.cv a` also lists every online player's act; `false` = admins only (on PvP servers it tells who is how far) |
-| Chat | Welcome | `true` | Two lines to a player entering the world: what the mod does, how to pick the language |
+| Chat | Welcome | `true` | A line to a player entering the world: what the mod does and how to pick the language. A player who hasn't picked one gets it in English and in Russian |
 | Chat | WelcomeEn, WelcomeRu | empty | Your own welcome lines; color tags work, about 450 bytes (a Russian letter is 2) |
-| Chat | TitleColor, TextColor, CommandColor | gold, white, green | Announcement colors |
+| Chat | TitleColor, TextColor, CommandColor | `#FFC83C`, `#FFFFFF`, `#7CFC7C` | Announcement colors, as `#RRGGBB` (names like `yellow` are ignored) |
 | AutoStart | Source | `Both` | `Mod` = only the mod starts carriages, the game no longer spawns them near players; `Game` = only the game; `Both` |
 | AutoStart | IntervalMinutes | `20` | Minutes between two starts in one act; `0` = auto-start off |
 | AutoStart | Scope | `AllOnlineActs` | `AllOnlineActs`, or `Leader`: only the act of the most advanced player online |
@@ -131,25 +133,27 @@ The Draculin prison carriage counts as Act II, as Dunley's hard one, even though
 | Start | MaxRunMinutes | `90` | How long a started carriage is looked after |
 | Start | MaxSquadSize | `20` | Safety limit for a started squad |
 | Timing | CheckSeconds | `30` | How often carriages are searched |
-| Timing | SafetyScanMinutes | `30` | How often the whole world is searched as a safety net |
+| Timing | SafetyScanMinutes | `30` | How often the whole world is searched as a safety net; `0` = off |
 | Debug | VerboseLog | `false` | Every check and every step of a start in the log |
 | Debug | EnableDiagnostics | `false` | Developer commands `.cvdiag` |
 
-The limits count only carriages started by the mod that still have their cart. With `Source = Mod` and `IntervalMinutes = 0` there are no carriages at all; the log warns about it. Each player's language is kept in `BepInEx/config/CarriageTracker.languages.txt`.
+The limits count only carriages auto-start started that still have their cart; `.cv start` and the game's own carriages don't count. With `Source = Mod` and `IntervalMinutes = 0` there are no carriages at all; the log warns about it. Each player's language is kept in `BepInEx/config/CarriageTracker.languages.txt`.
+
+Edit the file while the server is stopped: admin commands that change a setting (`.cv auto`, `.cv source`, `.cv icon`, `.cv mode`) write the whole file back.
 
 ## Compatibility
 
 Runs on the author's server together with Bloodcraft 1.13.26, KindredCommands 2.5.8, KindredLogistics, KindredPortals, KindredSchematics, Faust, ScarletCore, ScarletBrazier, ScarletTrash, CoffinSleep, BetterMissions, AutoCloseDoors and VampireCommandFramework 0.11. With [Bloodcraft](https://thunderstore.io/c/v-rising/p/zfolmt/Bloodcraft/), `PlayerAct = Level` uses its character level.
 
-With KindredPortals installed, icons of stopped carriages are visible to everyone even with `GlobalIcons = false`: KindredPortals makes every icon on such a marker global.
+With KindredPortals installed, icons of stopped carriages (and of all carriages with `IconMode = proxy`) are visible to everyone even with `GlobalIcons = false`: KindredPortals makes every icon on a marker object global, and those icons hang on such markers.
 
-At the first check after the server starts, the mod checks every game field it relies on. If a game update has changed one, the log says which, and starting carriages is turned off while tracking, icons and announcements go on.
+At the first check after the server starts, the mod checks every game field it relies on. If a game update has changed one it can't do without, the log says which, and starting carriages and `Source = Mod` are turned off while tracking, icons and announcements go on. If a less important one is missing, only putting routes back to their first stop is off.
 
 ## Good to know
 
 - The game has no carriage map icon, and a server mod can't send new pictures to players, so the icon is one of the game's own. Pick one with `.cv icon`.
 - A route carries one carriage at a time. When the cart is destroyed, the animal and what is left of the squad walk on to the end of the route; until then that route is busy.
-- A started carriage keeps going if everybody logs off and is removed at the end of its route, as usual.
+- A started carriage keeps going if everybody logs off (the mod looks after it up to `MaxRunMinutes`) and is removed at the end of its route, as usual.
 - An Oakveil carriage that nobody robs keeps circling, as in the base game, and its route stays busy until it is destroyed.
 
 ## Uninstalling
@@ -157,9 +161,9 @@ At the first check after the server starts, the mod checks every game field it r
 While it runs, the mod changes some route settings in the world (with `Source = Mod` it blocks the game's own spawning), and the save keeps them. Before removing it:
 
 1. Run `.cv cleanup` in chat as an admin. It stops started carriages, gives every route the game's settings back and removes the mod's icons.
-2. Stop the server, delete `BepInEx/plugins/CarriageTracker`, start the server.
+2. Stop the server the normal way, so the world is saved, delete `BepInEx/plugins/CarriageTracker`, start the server.
 
-Without the cleanup, routes blocked by `Source = Mod` would stay without carriages from the game.
+Without the cleanup, routes blocked by `Source = Mod` would stay without carriages from the game, a route caught in the middle of a start could keep its start settings, and the mod's icons would stay on the map.
 
 ## Problems and ideas
 
@@ -190,7 +194,7 @@ License: MIT.
 
 Игрокам ничего ставить не нужно.
 
-**Установка.** Через r2modman или Thunderstore Mod Manager: найди CarriageTracker в профиле выделенного сервера и установи, зависимости поставятся сами. Вручную: нужны BepInExPack V Rising и VampireCommandFramework, а `CarriageTracker.dll` из [последнего релиза](https://github.com/Bazarov888/CarriageTracker/releases/latest) кладётся в `BepInEx/plugins/CarriageTracker/` на сервере. Настройки появятся в `BepInEx/config/CarriageTracker.cfg` после первого запуска.
+**Установка.** Мод для выделенного сервера. Через r2modman или Thunderstore Mod Manager: найди CarriageTracker в профиле выделенного сервера и установи, зависимости поставятся сами. Вручную: нужны [BepInExPack V Rising](https://thunderstore.io/c/v-rising/p/BepInEx/BepInExPack_V_Rising/) и [VampireCommandFramework](https://thunderstore.io/c/v-rising/p/deca/VampireCommandFramework/), а `CarriageTracker.dll` из [последнего релиза](https://github.com/Bazarov888/CarriageTracker/releases/latest) кладётся в `BepInEx/plugins/CarriageTracker/` на сервере. Настройки появятся в `BepInEx/config/CarriageTracker.cfg` после первого запуска.
 
 **Команды для всех.**
 
@@ -203,8 +207,8 @@ License: MIT.
 | `.cv a` | Твой акт и маршруты, которые тебе достаются |
 | `.cv lang <ru или en>` | Язык сообщений мода для тебя |
 
-Команды админа, настройки и подробности про акты описаны выше, в английской части. Коротко: по умолчанию каждые 20 минут в каждом акте с игроками онлайн выходит караван. Акт игрока считается по выпитым V Blood, акт маршрута — по региону (Farbane I, Dunley II, Silverlight и Oakveil IV). Игроки III акта, где в игре повозок нет, получают караваны IV акта.
+Команды админа, настройки и подробности про акты описаны выше, в английской части. Коротко: по умолчанию каждые 20 минут в каждом акте с игроками онлайн выходит караван; первый — через 20 минут после запуска сервера, сразу можно запустить командой админа `.cv an`. Акт игрока считается по выпитым V Blood, акт маршрута — по региону (Farbane I, Dunley II, Silverlight и Oakveil IV). Игроки III акта, где в игре повозок нет, получают караваны IV акта.
 
-**Удаление.** Сначала выполни в чате `.cv cleanup` (админ): мод вернёт маршрутам настройки игры и уберёт свои значки. Потом останови сервер, удали `BepInEx/plugins/CarriageTracker` и запусти сервер.
+**Удаление.** Сначала выполни в чате `.cv cleanup` (админ): мод вернёт маршрутам настройки игры и уберёт свои значки. Потом останови сервер обычным способом, чтобы мир сохранился, удали `BepInEx/plugins/CarriageTracker` и запусти сервер. Без этого маршруты, заблокированные при `Source = Mod`, останутся без караванов игры, а значки мода — на карте.
 
 Ошибки и идеи: [GitHub issues](https://github.com/Bazarov888/CarriageTracker/issues).

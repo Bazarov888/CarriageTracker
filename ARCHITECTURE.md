@@ -255,6 +255,8 @@ is queued like above; if the whole pass fails it is tried again on the next chec
   `Ticker.Update` resets it to the server default before background work.
 - `Greeter` (every check) sends the welcome lines to players who came into the world since the previous
   check (`Welcome.Greet`); nobody is greeted at the first check after the server start.
+- Announcements use the color name `white` for the default text color and put the direction before the distance:
+  on 07.11 a player's chat filter masked a hex color code followed by digits, and the broken tag showed as text.
 
 ## Removing the mod (`.cv cleanup`)
 
@@ -274,8 +276,6 @@ keeps `Start`, auto-start and `ApplySource` from changing the world until the se
   starts shows whether the buff was found and whether the animal could be killed.
 - `LanguageMiddleware` is added to VCF's global middleware list, so it sees every command of every mod; it acts
   only on commands declared in this assembly.
-- Fields of `UnitCompositionSpawner` are set by reflection on a boxed copy (`SetField`); a renamed field only logs a warning.
+- Fields of `UnitCompositionSpawner` are set by reflection on a boxed copy (`SetField`); `GameCheck` checks at the first
+  check that they all exist and turns starts off if one a start can't be undone without is missing.
 - `Caravans.Field` / `GameTypes.Find` read some game types by name, because their namespace differs between game builds.
-
-Announcements use the color name `white` for the default text color and put the direction before the distance:
-on 07.11 a player's chat filter masked a hex color code followed by digits, and the broken tag showed as text.

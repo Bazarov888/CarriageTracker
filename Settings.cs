@@ -105,7 +105,7 @@ static class Settings
         AnnounceVanilla = cfg.Bind("Chat", "AnnounceVanilla", true,
             "Also announce caravans the game spawned by itself next to a player. false = only caravans started by the mod.");
         Welcome = cfg.Bind("Chat", "Welcome", true,
-            "Two lines to a player who has just come into the world: what the mod does and how to pick the language (.cv lang).");
+            "A line to a player who has just come into the world: what the mod does and how to pick the language (.cv lang). A player who hasn't picked one gets it in English and in Russian.");
         WelcomeEn = cfg.Bind("Chat", "WelcomeEn", "",
             "Your own English welcome line instead of the mod's. Empty = the mod's. Color tags like <color=#7CFC7C>.cv l</color> work. At most about 450 bytes.");
         WelcomeRu = cfg.Bind("Chat", "WelcomeRu", "",

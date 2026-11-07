@@ -3,8 +3,8 @@
 ## 1.0.20
 
 - README rewritten for server owners installing the mod for the first time: what it does, installation with a mod manager or by hand, what the defaults do and which settings to change, commands, acts and routes, every setting, compatibility, uninstalling.
-- The second announcement line names the direction first (`North-west, 234 m.`) and uses the color name `white` instead of `#FFFFFF` for the default text color. On 07.11 a player's chat filter masked `FFFFFF>234` of `<color=#FFFFFF>234 m`, the broken tag showed up as text.
-- A loot container the mod kept longer goes 60 seconds after it is emptied, as the game would have it. Until now an empty container stood out the whole `LootKeepMinutes`.
+- The second announcement line names the direction first (`North-west, 234 m.`) and uses the color name `white` instead of `#FFFFFF` for the default text color. On 07.11 a player's chat filter masked `FFFFFF>234` of `<color=#FFFFFF>234 m`, and the broken tag showed up as text.
+- A loot container the mod kept longer is removed about 60 seconds after it is emptied (plus up to one check), as the game would have it. Until now an empty container stayed for the whole `LootKeepMinutes`.
 
 ## 1.0.19
 

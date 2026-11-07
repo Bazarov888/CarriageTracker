@@ -116,8 +116,8 @@ static class Chat
     }
 }
 
-// Two lines for a player who has just come into the world: what the mod does and how to pick the language.
-// A player who picked a language gets it in that one, others in English and Russian.
+// A line for a player who has just come into the world: what the mod does and how to pick the language.
+// A player who picked a language gets it in that one, others in English and in Russian (two lines).
 static class Greeter
 {
     static readonly HashSet<ulong> InWorld = new();
