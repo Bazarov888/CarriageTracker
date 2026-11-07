@@ -579,6 +579,13 @@ static class Program
             Eq(ChatText.MaxBytes, System.Text.Encoding.UTF8.GetByteCount(fit), "filled up to the limit");
         });
 
+        // --- 1.0.20: an emptied container goes as the game would have it (07.11)
+        Test("an emptied container the mod kept goes 60 s later", () =>
+        {
+            Eq<double?>(1060, LootLogic.EmptiedEndTime(1000, 1600));
+            Eq<double?>(null, LootLogic.EmptiedEndTime(1000, 1030), "a sooner time stays");
+        });
+
         Console.WriteLine($"{_passed} passed, {_failed} failed");
         return _failed == 0 ? 0 : 1;
     }

@@ -222,7 +222,10 @@ static class Settings
     public static string Color(ConfigEntry<string> entry, string fallback)
     {
         string v = (entry.Value ?? "").Trim();
-        return v.Length >= 4 && v[0] == '#' ? v : fallback;
+        v = v.Length >= 4 && v[0] == '#' ? v : fallback;
+        // White by name, not as #FFFFFF: on 07.11 a player's chat filter masked "FFFFFF>234" of
+        // <color=#FFFFFF>234 m and the broken tag showed up as text.
+        return v.Equals("#FFFFFF", StringComparison.OrdinalIgnoreCase) || v.Equals("#FFF", StringComparison.OrdinalIgnoreCase) ? "white" : v;
     }
 
     // ExcludedRoutes is parsed again only when its text changes.
