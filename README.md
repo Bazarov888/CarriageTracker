@@ -143,7 +143,30 @@ Edit the file while the server is stopped: admin commands that change a setting 
 
 ## Compatibility
 
-Runs on the author's server together with Bloodcraft 1.13.26, KindredCommands 2.5.8, KindredLogistics, KindredPortals, KindredSchematics, Faust, ScarletCore, ScarletBrazier, ScarletTrash, CoffinSleep, BetterMissions, AutoCloseDoors and VampireCommandFramework 0.11. With [Bloodcraft](https://thunderstore.io/c/v-rising/p/zfolmt/Bloodcraft/), `PlayerAct = Level` uses its character level.
+Runs without errors on the author's server together with these mods (acts there are counted by V Blood, the default `PlayerAct`):
+
+| Mod | Version |
+|---|---|
+| AutoCloseDoors | 3.1.0 |
+| BetterMissions | 2.2.0 |
+| Bloodcraft | 1.13.26 |
+| CoffinSleep | 2.0.4 |
+| FasterCastleMovement | 1.0.0 |
+| Faust | 0.16.5 |
+| HookDOTS.API | 1.1.1 |
+| KeepInventory | 1.0.0 |
+| KindredCommands | 2.5.8 |
+| KindredLogistics | 1.6.1 |
+| KindredPortals | 1.1.3 |
+| KindredSchematics | 1.5.6 |
+| NightBloom | 1.0.0 |
+| ScarletBrazier | 1.0.1 |
+| ScarletCore | 1.3.11 |
+| ScarletTrash | 1.0.1 |
+| ServantForge | 0.1.10 |
+| VampireCommandFramework | 0.11.0 |
+
+[Bloodcraft](https://thunderstore.io/c/v-rising/p/zfolmt/Bloodcraft/) is not required. If you set `PlayerAct = Level` or `Highest` and Bloodcraft's leveling is on, the character level the mod reads is Bloodcraft's level; without it, the gear level.
 
 With KindredPortals installed, icons of stopped carriages (and of all carriages with `IconMode = proxy`) are visible to everyone even with `GlobalIcons = false`: KindredPortals makes every icon on a marker object global, and those icons hang on such markers.
 
