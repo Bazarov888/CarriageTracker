@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using BepInEx;
 using BepInEx.Configuration;
@@ -29,6 +30,32 @@ public class Plugin : BasePlugin
     internal static void Info(string message) => Logger.LogInfo($"{Now} {message}");
     internal static void Warn(string message) => Logger.LogWarning($"{Now} {message}");
     internal static void Error(string message) => Logger.LogError($"{Now} {message}");
+
+    // An error that repeats (the same place, type and message) is written in full once per 10 minutes; the repeats in
+    // between are only counted, and the count is written with the next full line and in the memory line. Until
+    // 1.0.21 an error at every check wrote a full stack trace every 30 s (audit 07.11 by Nikolai, R5).
+    static readonly TimeSpan RepeatWindow = TimeSpan.FromMinutes(10);
+    static readonly Dictionary<string, (DateTime At, int Count)> Seen = new();
+    internal static long Repeats;
+
+    internal static void Fail(string where, Exception e)
+    {
+        string key = $"{where}|{e.GetType().FullName}|{e.Message}";
+        var now = DateTime.UtcNow;
+        if (Seen.TryGetValue(key, out var last) && now - last.At < RepeatWindow)
+        {
+            Seen[key] = (last.At, last.Count + 1);
+            Repeats++;
+            return;
+        }
+        if (Seen.Count >= 100)
+            foreach (var k in new List<string>(Seen.Keys))
+                if (now - Seen[k].At >= RepeatWindow) Seen.Remove(k);
+        if (Seen.Count >= 100) { Repeats++; return; } // 100 different errors within 10 minutes: the rest only counted
+        Seen[key] = (now, 0);
+        string again = last.Count > 0 ? $" (the same error {last.Count} more times in the last {Math.Round((now - last.At).TotalMinutes)} min)" : "";
+        Error($"{where}{again}: {e}");
+    }
 
     // Detailed lines (every check, every step of a started caravan) only with Debug.VerboseLog = true.
     internal static void Trace(string message)
@@ -133,18 +160,18 @@ public class Ticker : UnityEngine.MonoBehaviour
                 var world = Caravans.ServerWorld();
                 if (world != null) Starter.Update(world.EntityManager);
             }
-            catch (Exception e) { Plugin.Error($"CarriageTracker start: {e}"); }
+            catch (Exception e) { Plugin.Fail("CarriageTracker start", e); }
         }
         try { Memory.Tick(); }
-        catch (Exception e) { Plugin.Error($"CarriageTracker memory: {e}"); }
+        catch (Exception e) { Plugin.Fail("CarriageTracker memory", e); }
         var now = DateTime.UtcNow;
         if (now >= _next)
         {
             _next = now.AddSeconds(Math.Max(5, Settings.CheckSeconds.Value));
             try { Tracker.Tick(false); }
-            catch (Exception e) { Plugin.Error($"CarriageTracker: {e}"); }
+            catch (Exception e) { Plugin.Fail("CarriageTracker", e); }
             try { AutoStart.Tick(); }
-            catch (Exception e) { Plugin.Error($"CarriageTracker auto: {e}"); }
+            catch (Exception e) { Plugin.Fail("CarriageTracker auto", e); }
         }
         // A route that has just started waiting for a new caravan is blocked within 5 seconds, so a player
         // standing next to it doesn't get a caravan from the game in between.
@@ -161,7 +188,7 @@ public class Ticker : UnityEngine.MonoBehaviour
                     Starter.RetryRepairs(world.EntityManager, prefabs);
                 }
             }
-            catch (Exception e) { Plugin.Error($"CarriageTracker source: {e}"); }
+            catch (Exception e) { Plugin.Fail("CarriageTracker source", e); }
         }
     }
 }

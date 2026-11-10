@@ -70,9 +70,9 @@ public class Commands
     static void SetMarker(ChatCommandContext ctx, EntityManager em, float3 pos)
     {
         var e = em.CreateEntity(
-            ComponentType.ReadWrite(Il2CppType.Of<FromCharacter>()),
-            ComponentType.ReadWrite(Il2CppType.Of<SetMapMarkerEvent>()),
-            ComponentType.ReadWrite(Il2CppType.Of<ReceiveNetworkEventTag>()));
+            Ct<FromCharacter>.RW,
+            Ct<SetMapMarkerEvent>.RW,
+            Ct<ReceiveNetworkEventTag>.RW);
         em.SetComponentData(e, new FromCharacter { User = ctx.Event.SenderUserEntity, Character = ctx.Event.SenderCharacterEntity });
         em.SetComponentData(e, new SetMapMarkerEvent { Position = new float2(pos.x, pos.z) });
     }

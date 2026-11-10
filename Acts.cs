@@ -183,10 +183,7 @@ static class Acts
     public static List<OnlinePlayer> Online(EntityManager em, PrefabCollectionSystem prefabs)
     {
         var result = new List<OnlinePlayer>();
-        var builder = new EntityQueryBuilder(Allocator.Temp)
-            .AddAll(ComponentType.ReadOnly(Il2CppType.Of<User>()));
-        var query = em.CreateEntityQuery(ref builder);
-        builder.Dispose();
+        var query = Queries.Get(em, "User", false, Ct<User>.RO);
         var users = query.ToEntityArray(Allocator.Temp);
         try
         {
@@ -200,7 +197,6 @@ static class Acts
         finally
         {
             users.Dispose();
-            query.Dispose();
         }
         return result;
     }

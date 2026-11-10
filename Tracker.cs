@@ -30,10 +30,7 @@ static class Announcer
         string command = Settings.Color(Settings.CommandColor, "#7CFC7C");
         string language = L.Current;
 
-        var builder = new EntityQueryBuilder(Allocator.Temp)
-            .AddAll(ComponentType.ReadOnly(Il2CppType.Of<User>()));
-        var query = em.CreateEntityQuery(ref builder);
-        builder.Dispose();
+        var query = Queries.Get(em, "User", false, Ct<User>.RO);
         var users = query.ToEntityArray(Allocator.Temp);
         try
         {
@@ -73,7 +70,6 @@ static class Announcer
         finally
         {
             users.Dispose();
-            query.Dispose();
         }
         Plugin.Trace($"CarriageTracker: announcement of {route} sent to {sent} players");
     }
@@ -126,9 +122,7 @@ static class Greeter
     public static void Tick(EntityManager em)
     {
         var users = new Dictionary<ulong, User>();
-        var builder = new EntityQueryBuilder(Allocator.Temp).AddAll(ComponentType.ReadOnly(Il2CppType.Of<User>()));
-        var query = em.CreateEntityQuery(ref builder);
-        builder.Dispose();
+        var query = Queries.Get(em, "User", false, Ct<User>.RO);
         var arr = query.ToEntityArray(Allocator.Temp);
         try
         {
@@ -144,7 +138,6 @@ static class Greeter
         finally
         {
             arr.Dispose();
-            query.Dispose();
         }
         var greet = Welcome.Greet(InWorld, users.Keys, _primed);
         _primed = true;
@@ -433,14 +426,30 @@ static class Loot
 
 // Once every 10 minutes a line with the server process's memory and what the mod holds: the server was killed for
 // memory on 05.11 (6.3 GB limit). If the process grows while the mod's objects stay level, the growth isn't the
-// mod's; if markers or icons pile up, they are. Called every frame from Ticker, so it runs even if checks fail.
-// icons: map icons of the mod's kinds as found at the last check (with Icon = merchant that includes the game's own
-// merchant icons); markers: all MapIcon_ProxyObject_POI_Unknown markers (KindredPortals' included), of them the mod's.
+// mod's; if markers, icons or objects waiting to be destroyed pile up, they are. Called every frame from Ticker, so
+// it runs even if checks fail.
+// icons: kept on caravans of all of the mod's kinds on caravans or left without their object; markers: the mod's of
+// all MapIcon_ProxyObject_POI_Unknown markers (KindredPortals' included); made and removed since the last line, the
+// removed ones by why (audit 07.11 by Nikolai, R2: how many network objects the mod turns over, and for what);
+// destroy queue: objects handed to the game's destroy pipeline it hasn't removed yet (R1).
 static class Memory
 {
     static readonly TimeSpan Every = TimeSpan.FromMinutes(10);
     static DateTime _next = DateTime.UtcNow.AddMinutes(10);
-    static long _iconsMade, _iconsDropped, _markersMade, _markersDropped, _orphans;
+    static long _iconsMade, _iconsDropped, _markersMade, _markersDropped, _orphans, _retries, _gaveUp, _repeats;
+    static readonly Dictionary<DropWhy, long> _iconsBy = new(), _markersBy = new();
+
+    static string Why(Dictionary<DropWhy, long> now, Dictionary<DropWhy, long> before)
+    {
+        var parts = new List<string>();
+        foreach (var kv in now)
+        {
+            long n = kv.Value - (before.TryGetValue(kv.Key, out long b) ? b : 0);
+            if (n > 0) parts.Add($"{kv.Key.ToString().ToLowerInvariant()} {n}");
+            before[kv.Key] = kv.Value;
+        }
+        return parts.Count > 0 ? ": " + string.Join(", ", parts) : "";
+    }
 
     public static void Tick()
     {
@@ -457,12 +466,17 @@ static class Memory
         string game;
         try { game = $"{Il2CppSystem.GC.GetTotalMemory(false) >> 20} MB"; }
         catch (Exception e) { game = $"unknown ({e.GetType().Name})"; }
+        var doomed = Doomed.Counts(now);
         Plugin.Info($"CarriageTracker memory: {process}; game heap {game}, plugins' .NET heap {GC.GetTotalMemory(false) >> 20} MB; " +
                     $"mod: caravans {Tracker.Current.Count}, starts {Starter.RunCount}; " +
-                    $"icons on caravans {Icons.Live} of {Icons.InWorld} of these kinds (made {Icons.Made - _iconsMade}, removed {Icons.Dropped - _iconsDropped}); " +
-                    $"markers {Proxies.Live} of {Proxies.InWorld} (made {Proxies.Made - _markersMade}, removed {Proxies.Dropped - _markersDropped}, " +
-                    $"stale icons removed {Proxies.Orphans - _orphans}) since the last line");
+                    $"icons on caravans {Icons.Live} of {Icons.InWorld} (made {Icons.Made - _iconsMade}, removed {Icons.Dropped - _iconsDropped}{Why(Icons.DroppedBy, _iconsBy)}); " +
+                    $"markers the mod's {Proxies.Live} of {Proxies.InWorld} (made {Proxies.Made - _markersMade}, removed {Proxies.Dropped - _markersDropped}{Why(Proxies.DroppedBy, _markersBy)}; " +
+                    $"stale icons removed {Proxies.Orphans - _orphans}); " +
+                    $"destroy queue {doomed.Waiting}, of them over a minute {doomed.Stuck}, of them given up {doomed.GivenUp} " +
+                    $"(tried again {Doomed.Retries - _retries}, given up {Doomed.GaveUp - _gaveUp}); " +
+                    $"repeated errors not written {Plugin.Repeats - _repeats}. Numbers in brackets and of errors: since the last line");
         _iconsMade = Icons.Made; _iconsDropped = Icons.Dropped;
         _markersMade = Proxies.Made; _markersDropped = Proxies.Dropped; _orphans = Proxies.Orphans;
+        _retries = Doomed.Retries; _gaveUp = Doomed.GaveUp; _repeats = Plugin.Repeats;
     }
 }
