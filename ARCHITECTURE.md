@@ -48,7 +48,7 @@ A change of behaviour starts with a test case.
 | `Commands.cs` | Chat commands (VampireCommandFramework). |
 | `Loc.cs` | Chat texts in English and Russian; `L` answers in the language in use for the current player. |
 | `Languages.cs` | Each player's own language (`BepInEx/config/CarriageTracker.languages.txt`, kept by `LanguageStore`) and the VCF middleware that switches to it for every command of this mod. |
-| `Diag.cs` | Developer commands `.cvdiag`, registered only with `EnableDiagnostics = true`. |
+| `Diag.cs` | Developer commands `.cvdiag`, registered only with `EnableDiagnostics = true`: components of a caravan object, objects nearby, dumps of carts and patrols, the mod's markers and icons (`markers`), moving a marker (`movemarker`). |
 
 ## Game model
 
@@ -217,17 +217,21 @@ is queued like above; if the whole pass fails it is tried again on the next chec
   so a caravan that reached the end is usually last seen one stop before it; the route back at its first stop
   with no units tells it apart from a robbed one, whose route stays where it was robbed.
 - Icons: in `direct` mode the icon entity targets the cart; frozen carts and `proxy` mode use a marker entity
-  that follows the caravan. `Icons.Sync` touches only icons the mod could have made: on a caravan, icons of the
+  that follows the caravan. The decisions are in `Logic/IconLogic.cs` (`ForIcon`, `Owned`, `ForMarker`, `MovedFar`,
+  `Orphan`), the game layer (`Icons`, `Proxies`) only reads the facts and carries them out; the tests check every
+  combination against the conditions of 1.0.20. `Icons.Sync` touches only icons the mod could have made: on a caravan, icons of the
   current kind, `OldIcons` or a named preset; off a caravan, only an icon of the current or an `OldIcons` kind
   whose object is gone. Icons on marker objects (`Attach`), where the game keeps its own icons, aren't touched there;
   only `Proxies.SweepOrphans` removes such an icon of the mod's own kinds whose marker no longer exists.
 - Markers (`Proxies`) are the game's `MapIcon_ProxyObject_POI_Unknown`, which KindredPortals uses too (with
-  `SpawnedBy` = a player's character and an icon of the player's choice). `Proxies.Owned` touches a marker only if
+  `SpawnedBy` = a player's character and an icon of the player's choice). `IconLogic.Owned` takes a marker as the mod's only if
   the mod made it since the server start, or if it asks for one icon of the mod's kinds and was spawned by a caravan
   object or by something that no longer exists (after a restart; the session list isn't saved and entity numbers
   change). Until 1.0.10 every such marker not on a wanted caravan was removed (audit of 02.11). Left as a known
-  edge: a KindredPortals marker with an icon of the mod's kinds whose character was deleted.
-- A marker is made anew where its caravan is when the caravan has moved away: 30 m for a moving caravan (`proxy`
+  edge: a KindredPortals marker with an icon of the mod's kinds whose character was deleted. Not checked on the
+  server yet: whether the game's own merchant markers are this prefab with an empty `SpawnedBy` (then, with the
+  default `Icon = merchant`, the mod would take them as its own); `.cvdiag markers` shows it (audit 07.11, R4).
+- A marker is made anew where its caravan is when the caravan has moved away (`IconLogic.MovedFar`): 30 m for a moving caravan (`proxy`
   mode), 100 m and not before the marker is 3 minutes old for a frozen one. Until 1.0.16 it was 10 m, and markers
   and their icons were destroyed with `EntityManager.DestroyEntity`, past the game's destroy pipeline; on 05.11
   players saw rows of stale carriage icons and the server was killed for memory. Markers and icons now go through
@@ -281,5 +285,16 @@ keeps `Start`, auto-start and `ApplySource` from changing the world until the se
 - `LanguageMiddleware` is added to VCF's global middleware list, so it sees every command of every mod; it acts
   only on commands declared in this assembly.
 - Fields of `UnitCompositionSpawner` are set by reflection on a boxed copy (`SetField`); `GameCheck` checks at the first
-  check that they all exist and turns starts off if a field needed to undo a start is missing.
+  check that they all exist and turns starts off if a field needed to undo a start is missing. Failing to write such a
+  field (range, respawn timers) throws before the copy is written back, so a spawner is never left half-changed; the
+  callers catch it per start or per route. Other fields only give a warning.
 - `Caravans.Field` / `GameTypes.Find` read some game types by name, because their namespace differs between game builds.
+
+## Open points (audit 07.11, Nikolai)
+
+- Moving a marker instead of making it anew (R2): whether the client shows a moved marker in the new place isn't
+  known; `.cvdiag movemarker` checks it. Until then markers are made anew, and the memory line counts them by why.
+- Game merchant markers (R4): see Icons above, `.cvdiag markers`.
+- Not done yet, refactoring without a change of behaviour: one state object per server world instead of static
+  collections (A3; on a new world only the entity keys of icons, markers and the destroy queue are dropped), the
+  check split into explicit stages (A4), the language passed as a parameter instead of `L.Current` (A5).
