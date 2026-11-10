@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.21
+
+After the architecture and memory audit of 07.11 (Nikolai). No change to what players see; the server log and the memory line say more, and the mod makes less garbage.
+
+- Objects the mod hands to the game's destroy pipeline and the game doesn't remove are no longer invisible. The memory line shows how many are waiting, how many are older than a minute and how many were given up. One still there after 5 minutes is destroyed once more; one still there after 10 minutes is given up with one warning for all such objects of that check (before: one warning per object, then it was counted nowhere).
+- The memory line shows why icons and markers were removed since the last line (`moved`, `unwanted`, `gone`, `kind`, `duplicate`), so it is clear how many network objects the mod makes and removes and what for. The icon count no longer includes the game's own merchant icons on its markers.
+- The server world, the prefab system, component types and the entity queries of every check are looked up once and kept instead of being made again on every check (and every frame while a start runs). This removes a steady stream of IL2CPP wrappers that only the .NET finalizer frees and that made the game heap on the memory graph look like a slow leak.
+- The decisions about icons and markers (which to keep, which to remove and why, which markers are the mod's, when a marker is made anew, when a destroyed object is tried again) moved to `Logic/IconLogic.cs` and are covered by 16 new tests built on the cases of 02.11, 05.11 and 07.11.
+- A marker removed by someone else (the game, another mod, an admin) is forgotten by the mod at the next check.
+- An error that repeats is written in full once per 10 minutes; the repeats in between are counted and the count goes into the next full line and the memory line. Before, an error at every check wrote a full stack trace every 30 seconds.
+- Failing to write a spawner field a start can't be undone without (spawn range, respawn timers) stops that write instead of writing back a half-changed spawner. `Source = Mod` and `.cv cleanup` go on with the other routes when one route fails.
+- New developer commands (`EnableDiagnostics = true`): `.cvdiag markers` lists every map marker of the kind the mod uses, grouped by what spawned it, its icon and whether the mod takes it as its own, and every icon of the mod's kinds grouped by what it hangs on, to check that the mod never takes a game merchant marker for its own. `.cvdiag movemarker` moves the nearest of the mod's markers to you, to check whether a moved marker shows in the new place on the map (then markers could be moved instead of made anew).
+
 ## 1.0.20
 
 - README rewritten for server owners installing the mod for the first time: what it does, installation with a mod manager or by hand, what the defaults do and which settings to change, commands, acts and routes, every setting, compatibility, uninstalling.

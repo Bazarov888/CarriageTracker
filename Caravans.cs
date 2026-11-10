@@ -38,21 +38,41 @@ static class Caravans
     public record Caravan(string Route, Entity Target, float3 Pos, string Note, bool Frozen, bool Icon,
                           Entity Patrol, Progress Stops, string State);
 
+    // The server world and its prefab system are looked up once and kept while the world exists (audit 07.11, R3):
+    // until 1.0.21 every call went through World.s_AllWorlds and read each world's name, every frame while a start
+    // runs, and each time made new IL2CPP wrappers and strings. A world that is gone drops the cache and the queries
+    // made in it (Queries).
+    static World _world;
+    static PrefabCollectionSystem _prefabs;
+
     public static World ServerWorld()
     {
+        var cached = _world;
+        if (cached != null && cached.IsCreated) return cached;
+        if (cached != null || _prefabs != null) Queries.Reset();
+        _world = null;
+        _prefabs = null;
         if (World.s_AllWorlds == null) return null;
         foreach (var w in World.s_AllWorlds)
-            if (w.Name == "Server" && w.IsCreated) return w;
+            if (w.Name == "Server" && w.IsCreated)
+            {
+                Queries.Reset();
+                _world = w;
+                return w;
+            }
         return null;
     }
 
     public static PrefabCollectionSystem Prefabs(World world)
     {
+        if (_prefabs != null && ReferenceEquals(world, _world)) return _prefabs;
         var p = world.GetExistingSystemManaged<PrefabCollectionSystem>();
-        return p != null && p.GameDataInitialized ? p : null;
+        if (p == null || !p.GameDataInitialized) return null;
+        if (ReferenceEquals(world, _world)) _prefabs = p;
+        return p;
     }
 
-    public static bool Has<T>(EntityManager em, Entity e) => em.HasComponent(e, ComponentType.ReadOnly(Il2CppType.Of<T>()));
+    public static bool Has<T>(EntityManager em, Entity e) => em.HasComponent(e, Ct<T>.RO);
 
     public static (Kind Kind, string Route) Classify(PrefabCollectionSystem prefabs, PrefabGUID guid)
     {
@@ -84,16 +104,12 @@ static class Caravans
     }
 
     // Goes through networked objects that have the marker component (or all networked objects if there is no marker).
-    static void Collect(EntityManager em, PrefabCollectionSystem prefabs, ComponentType? marker,
+    static void Collect(EntityManager em, PrefabCollectionSystem prefabs, string name, ComponentType? marker,
                         List<Found> found, HashSet<(int, int)> seen, ref int scanned)
     {
-        var builder = new EntityQueryBuilder(Allocator.Temp)
-            .AddAll(ComponentType.ReadOnly(Il2CppType.Of<PrefabGUID>()))
-            .AddAll(ComponentType.ReadOnly(Il2CppType.Of<NetworkId>()));
-        if (marker.HasValue) builder = builder.AddAll(marker.Value);
-        builder = builder.WithOptions(EntityQueryOptions.IncludeDisabled);
-        var query = em.CreateEntityQuery(ref builder);
-        builder.Dispose();
+        var query = marker.HasValue
+            ? Queries.Get(em, "scan " + name, true, Ct<PrefabGUID>.RO, Ct<NetworkId>.RO, marker.Value)
+            : Queries.Get(em, "scan " + name, true, Ct<PrefabGUID>.RO, Ct<NetworkId>.RO);
         var entities = query.ToEntityArray(Allocator.Temp);
         try
         {
@@ -108,7 +124,6 @@ static class Caravans
         finally
         {
             entities.Dispose();
-            query.Dispose();
         }
     }
 
@@ -152,8 +167,8 @@ static class Caravans
         scanned = 0;
         var found = new List<Found>();
         var seen = new HashSet<(int, int)>();
-        Collect(em, prefabs, ComponentType.ReadOnly(Il2CppType.Of<ProjectM.Shared.Script_CarriageData>()), found, seen, ref scanned);
-        Collect(em, prefabs, ComponentType.ReadOnly(Il2CppType.Of<InventoryInstanceElement>()), found, seen, ref scanned);
+        Collect(em, prefabs, "carts", Ct<ProjectM.Shared.Script_CarriageData>.RO, found, seen, ref scanned);
+        Collect(em, prefabs, "inventories", Ct<InventoryInstanceElement>.RO, found, seen, ref scanned);
         return found;
     }
 
@@ -162,7 +177,7 @@ static class Caravans
     {
         scanned = 0;
         var found = new List<Found>();
-        Collect(em, prefabs, null, found, new HashSet<(int, int)>(), ref scanned);
+        Collect(em, prefabs, "all", null, found, new HashSet<(int, int)>(), ref scanned);
         return found;
     }
 
@@ -252,6 +267,36 @@ static class Caravans
     {
         double angle = (Math.Atan2(dx, dz) * 180 / Math.PI + 360) % 360;
         return L.T("dir." + ((int)Math.Round(angle / 45) % 8));
+    }
+}
+
+// Component types by C# type, made once per type (audit 07.11, R3): Il2CppType.Of<T>() makes a new wrapper with a
+// GCHandle on every call, which only the .NET finalizer frees, and the mod called it on every component check.
+static class Ct<T>
+{
+    public static readonly ComponentType RO = ComponentType.ReadOnly(Il2CppType.Of<T>());
+    public static readonly ComponentType RW = ComponentType.ReadWrite(Il2CppType.Of<T>());
+}
+
+// Entity queries the mod runs at every check, made once in the server world instead of at every check (audit 07.11,
+// R3). They belong to the world: never disposed by the mod, dropped when the world is gone (Caravans.ServerWorld)
+// and made again in the new one. Only the arrays read from them are disposed after use.
+static class Queries
+{
+    static readonly Dictionary<string, EntityQuery> Made = new();
+
+    public static void Reset() => Made.Clear();
+
+    public static EntityQuery Get(EntityManager em, string name, bool includeDisabled, params ComponentType[] all)
+    {
+        if (Made.TryGetValue(name, out var query)) return query;
+        var builder = new EntityQueryBuilder(Allocator.Temp);
+        foreach (var c in all) builder = builder.AddAll(c);
+        if (includeDisabled) builder = builder.WithOptions(EntityQueryOptions.IncludeDisabled);
+        query = em.CreateEntityQuery(ref builder);
+        builder.Dispose();
+        Made[name] = query;
+        return query;
     }
 }
 

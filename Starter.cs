@@ -90,17 +90,23 @@ static partial class Starter
         if (ct.HasValue && !em.HasComponent(e, ct.Value)) em.AddComponent(e, ct.Value);
     }
 
+    // Fields without which a start can't be undone (GameCheck: needed). Failing to write one throws, so the caller
+    // doesn't write back a half-changed copy of the spawner; until 1.0.21 it was only a warning (audit 07.11 by
+    // Nikolai, A6). Any other field gives a warning and is skipped.
+    static readonly HashSet<string> Required = new() { "PlayerRange", "RespawnTimeModifier", "MinRespawnTime", "MaxRespawnTime" };
+
     static void SetField(object boxed, string name, object value)
     {
         try
         {
-            var f = boxed.GetType().GetField(name);
-            if (f == null) { Plugin.Warn($"CarriageTracker start: spawner field {name} not found"); return; }
+            var f = boxed.GetType().GetField(name) ?? throw new MissingFieldException(boxed.GetType().Name, name);
             if (value != null && f.FieldType != value.GetType() && value is IConvertible) value = Convert.ChangeType(value, f.FieldType);
             f.SetValue(boxed, value);
         }
         catch (Exception e)
         {
+            if (Required.Contains(name))
+                throw new InvalidOperationException($"can't set spawner field {name}: {e.Message}", e);
             Plugin.Warn($"CarriageTracker start: can't set spawner field {name}: {e.Message}");
         }
     }

@@ -183,21 +183,25 @@ static partial class Starter
             object boxed = sp;
             bool changed = false;
             var normal = NormalOf(em, r.Patrol);
-            if (Caravans.Field(boxed, "PlayerRange") is float2 range && SpawnRange.CleanupOpens(range.x, range.y))
+            try
             {
-                SetField(boxed, "PlayerRange", new float2(0f, normal.RangeY));
-                changed = true;
+                if (Caravans.Field(boxed, "PlayerRange") is float2 range && SpawnRange.CleanupOpens(range.x, range.y))
+                {
+                    SetField(boxed, "PlayerRange", new float2(0f, normal.RangeY));
+                    changed = true;
+                }
+                if (TimersZero(boxed))
+                {
+                    NormalTimers(boxed, normal);
+                    changed = true;
+                }
+                if (changed)
+                {
+                    em.SetComponentData(r.Patrol, (UnitCompositionSpawner)boxed);
+                    routes++;
+                }
             }
-            if (TimersZero(boxed))
-            {
-                NormalTimers(boxed, normal);
-                changed = true;
-            }
-            if (changed)
-            {
-                em.SetComponentData(r.Patrol, (UnitCompositionSpawner)boxed);
-                routes++;
-            }
+            catch (Exception e) { Plugin.Error($"CarriageTracker cleanup: route {r.Key} keeps its start settings: {e.Message}"); }
             if (!tag.HasValue) continue;
             AddTag(em, r.Patrol, "DisableWhenNoPlayersInRange");
             var squad = Routes.ActiveUnits(em, r.Patrol);

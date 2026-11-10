@@ -37,7 +37,7 @@ A change of behaviour starts with a test case.
 | `Caravans.cs` | Finding carts, horses and loot containers in the world; reading game components by name. |
 | `Routes.cs` | Caravan routes (game patrols): list, squad, carts, progress along the path, `Snap`, state text. |
 | `Tracker.cs` | Every check: search, announcements in chat, map icons, log of caravans that disappeared. |
-| `Icons.cs` | Map icons on caravans (`Icons`) and on separate markers (`Proxies`). |
+| `Icons.cs` | Map icons on caravans (`Icons`) and on separate markers (`Proxies`), carried out as `Logic/IconLogic.cs` decides; objects waiting to be destroyed (`Doomed`). |
 | `AutoStart.cs` | Which route to start in which act, and when. |
 | `Starter.cs` | A forced start of one route and looking after it until it ends. |
 | `StarterSource.cs` | `Source = Mod`: keeping the game from spawning caravans by itself. |
@@ -232,10 +232,14 @@ is queued like above; if the whole pass fails it is tried again on the next chec
   and their icons were destroyed with `EntityManager.DestroyEntity`, past the game's destroy pipeline; on 05.11
   players saw rows of stale carriage icons and the server was killed for memory. Markers and icons now go through
   `DestroyUtility`, objects handed to it are skipped until the game has removed them (it is deferred; one still
-  there a minute later is logged), and at every check icons of the mod's own kinds (current and `OldIcons`) whose
+  there after 5 minutes is destroyed once more, after 10 minutes given up with one warning and counted, `DoomLogic`),
+  and at every check icons of the mod's own kinds (current and `OldIcons`) whose
   marker no longer exists are removed (`Proxies.SweepOrphans`).
-- Every 10 minutes `Memory` writes the process's memory, the game and plugin heaps and the mod's icons and markers
-  (how many exist, how many were made and removed) to the log.
+- Every 10 minutes `Memory` writes the process's memory, the game and plugin heaps, the mod's icons and markers
+  (how many exist, how many were made and removed, and why), the objects waiting to be destroyed and the repeated
+  errors not written to the log.
+- The server world, its prefab system, component types (`Ct<T>`) and the queries of every check (`Queries`) are made
+  once and kept while the world exists (audit 07.11).
 - New markers' icons are made global as soon as the game creates them (`MapIconSpawnPatch`), each marker once;
   with `GlobalIcons = false` nothing is waited for.
 - Loot containers with loot get the game's removal time (`DestroyAfterDuration.EndTime`) pushed out to

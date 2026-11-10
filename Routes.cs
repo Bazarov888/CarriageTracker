@@ -39,12 +39,7 @@ static class Routes
     static List<Route> Scan(EntityManager em, PrefabCollectionSystem prefabs)
     {
         var result = new List<Route>();
-        var builder = new EntityQueryBuilder(Allocator.Temp)
-            .AddAll(ComponentType.ReadOnly(Il2CppType.Of<GlobalPatrolState>()))
-            .AddAll(ComponentType.ReadOnly(Il2CppType.Of<UnitCompositionSpawner>()))
-            .WithOptions(EntityQueryOptions.IncludeDisabled);
-        var query = em.CreateEntityQuery(ref builder);
-        builder.Dispose();
+        var query = Queries.Get(em, "GlobalPatrolState+UnitCompositionSpawner all", true, Ct<GlobalPatrolState>.RO, Ct<UnitCompositionSpawner>.RO);
         var patrols = query.ToEntityArray(Allocator.Temp);
         try
         {
@@ -66,7 +61,6 @@ static class Routes
         finally
         {
             patrols.Dispose();
-            query.Dispose();
         }
         result.Sort((a, b) => string.CompareOrdinal(a.Key, b.Key));
         // Exactly two patrols of one key: the one farther east (greater x, as .cv m directions count) is "east".
@@ -117,11 +111,7 @@ static class Routes
         var horses = new HashSet<(int, int)>();
         foreach (var u in units) horses.Add((u.Index, u.Version));
         var carts = new List<Entity>();
-        var builder = new EntityQueryBuilder(Allocator.Temp)
-            .AddAll(ComponentType.ReadOnly(Il2CppType.Of<Script_CarriageData>()))
-            .WithOptions(EntityQueryOptions.IncludeDisabled);
-        var query = em.CreateEntityQuery(ref builder);
-        builder.Dispose();
+        var query = Queries.Get(em, "Script_CarriageData all", true, Ct<Script_CarriageData>.RO);
         var arr = query.ToEntityArray(Allocator.Temp);
         try
         {
@@ -134,7 +124,6 @@ static class Routes
         finally
         {
             arr.Dispose();
-            query.Dispose();
         }
         return carts;
     }

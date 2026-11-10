@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using Il2CppInterop.Runtime;
 using ProjectM;
 using ProjectM.Network;
+using ProjectM.Shared;
 using Stunlock.Core;
 using Unity.Collections;
 using Unity.Entities;
@@ -30,7 +31,7 @@ public class DiagCommands
         Entity best = Entity.Null;
         float bestDist = float.MaxValue;
         var builder = new EntityQueryBuilder(Allocator.Temp)
-            .AddAll(ComponentType.ReadOnly(Il2CppType.Of<PrefabGUID>()))
+            .AddAll(Ct<PrefabGUID>.RO)
             .WithOptions(EntityQueryOptions.IncludeDisabled);
         var query = em.CreateEntityQuery(ref builder);
         builder.Dispose();
@@ -120,7 +121,7 @@ public class DiagCommands
 
         var seen = new Dictionary<int, (string Name, int Count, float Dist, bool Net)>();
         var builder = new EntityQueryBuilder(Allocator.Temp)
-            .AddAll(ComponentType.ReadOnly(Il2CppType.Of<PrefabGUID>()))
+            .AddAll(Ct<PrefabGUID>.RO)
             .WithOptions(EntityQueryOptions.IncludeDisabled);
         var query = em.CreateEntityQuery(ref builder);
         builder.Dispose();
@@ -156,6 +157,128 @@ public class DiagCommands
             var v = list[i].Value;
             ctx.Reply($"{v.Name} ({list[i].Key}) x{v.Count}, {Math.Round(v.Dist)} m, network={(v.Net ? "yes" : "no")}");
         }
+    }
+
+    // ---- markers: whose map markers and icons there are (audit 07.11 by Nikolai, R4) ----
+    // With Icon = merchant (the default) the mod's icon is the game's own merchant icon. Lists every
+    // MapIcon_ProxyObject_POI_Unknown marker grouped by what spawned it, its icon and whether the mod takes it as its
+    // own (IconLogic.Owned), and every icon of the mod's kinds grouped by what it hangs on. A game merchant marker
+    // taken as the mod's would be removed by the mod: then this shows "mod's: yes" next to a merchant.
+    [Command("markers", adminOnly: true, description: "Map markers and icons of the mod's kinds, grouped, into chat and the log")]
+    public void Markers(ChatCommandContext ctx)
+    {
+        var world = Caravans.ServerWorld();
+        var prefabs = world == null ? null : Caravans.Prefabs(world);
+        if (prefabs == null) { ctx.Reply(L.T("world.notready")); return; }
+        var em = world.EntityManager;
+        string Name(Entity e)
+        {
+            if (e == Entity.Null) return "nothing";
+            if (!em.Exists(e)) return "gone";
+            return Caravans.Has<PrefabGUID>(em, e) && prefabs._PrefabLookupMap.TryGetName(em.GetComponentData<PrefabGUID>(e), out string n) ? n : "?";
+        }
+        string IconName(int g) => g == 0 ? "none" : prefabs._PrefabLookupMap.TryGetName(new PrefabGUID(g), out string n) ? n : g.ToString();
+
+        var markers = new SortedDictionary<string, int>(StringComparer.Ordinal);
+        var builder = new EntityQueryBuilder(Allocator.Temp)
+            .AddAll(Ct<PrefabGUID>.RO)
+            .AddAll(Ct<SpawnedBy>.RO)
+            .WithOptions(EntityQueryOptions.IncludeDisabled);
+        var query = em.CreateEntityQuery(ref builder);
+        builder.Dispose();
+        var arr = query.ToEntityArray(Allocator.Temp);
+        try
+        {
+            foreach (var p in arr)
+            {
+                if (em.GetComponentData<PrefabGUID>(p).GuidHash != Proxies.ProxyGuid) continue;
+                string key = $"by {Name(em.GetComponentData<SpawnedBy>(p).Value)}, icon {IconName(Proxies.IconOf(em, p))}, " +
+                             $"mod's: {(Proxies.IsMine(em, prefabs, p) ? "yes" : "no")}";
+                markers[key] = (markers.TryGetValue(key, out int n) ? n : 0) + 1;
+            }
+        }
+        finally
+        {
+            arr.Dispose();
+            query.Dispose();
+        }
+
+        var kinds = Icons.Kinds();
+        var icons = new SortedDictionary<string, int>(StringComparer.Ordinal);
+        builder = new EntityQueryBuilder(Allocator.Temp)
+            .AddAll(Ct<MapIconData>.RO)
+            .AddAll(Ct<PrefabGUID>.RO)
+            .WithOptions(EntityQueryOptions.IncludeDisabled);
+        query = em.CreateEntityQuery(ref builder);
+        builder.Dispose();
+        arr = query.ToEntityArray(Allocator.Temp);
+        try
+        {
+            foreach (var icon in arr)
+            {
+                int g = em.GetComponentData<PrefabGUID>(icon).GuidHash;
+                if (Icons.KindOf(g, kinds) == IconKind.Other) continue;
+                string on = Caravans.Has<Attach>(em, icon) ? "on marker " + Name(em.GetComponentData<Attach>(icon).Parent)
+                          : Caravans.Has<MapIconTargetEntity>(em, icon) ? "on " + Name(em.GetComponentData<MapIconTargetEntity>(icon).TargetEntity.GetEntityOnServer())
+                          : "on nothing";
+                string key = $"{IconName(g)} {on}";
+                icons[key] = (icons.TryGetValue(key, out int n) ? n : 0) + 1;
+            }
+        }
+        finally
+        {
+            arr.Dispose();
+            query.Dispose();
+        }
+
+        var lines = new List<string> { $"Markers {IconName(Proxies.ProxyGuid)}: {markers.Count} groups" };
+        foreach (var kv in markers) lines.Add($"  {kv.Value} x {kv.Key}");
+        lines.Add($"Icons of the mod's kinds: {icons.Count} groups");
+        foreach (var kv in icons) lines.Add($"  {kv.Value} x {kv.Key}");
+        foreach (var line in lines) Plugin.Info($"CarriageTracker markers: {line}");
+        for (int i = 0; i < lines.Count && i < 20; i++) ctx.Reply(lines[i]);
+        if (lines.Count > 20) ctx.Reply($"... {lines.Count - 20} more lines in the server log.");
+    }
+
+    // ---- movemarker: does a marker that is moved show in the new place (audit 07.11 by Nikolai, R2) ----
+    // Puts the nearest of the mod's markers where you stand. If the carriage icon on the map moves there, markers can
+    // be moved instead of being made anew. A frozen caravan's marker stays there for 3 minutes; a moving one in proxy
+    // mode is made anew at the next check.
+    [Command("movemarker", adminOnly: true, usage: "[radius]", description: "Move the nearest marker of the mod to you")]
+    public void MoveMarker(ChatCommandContext ctx, int radius = 300)
+    {
+        var world = Caravans.ServerWorld();
+        var prefabs = world == null ? null : Caravans.Prefabs(world);
+        if (prefabs == null) { ctx.Reply(L.T("world.notready")); return; }
+        var em = world.EntityManager;
+        float3 me = Caravans.PositionOf(em, ctx.Event.SenderCharacterEntity);
+        Entity best = Entity.Null;
+        float bestDist = float.MaxValue;
+        var builder = new EntityQueryBuilder(Allocator.Temp)
+            .AddAll(Ct<PrefabGUID>.RO)
+            .AddAll(Ct<SpawnedBy>.RO)
+            .WithOptions(EntityQueryOptions.IncludeDisabled);
+        var query = em.CreateEntityQuery(ref builder);
+        builder.Dispose();
+        var arr = query.ToEntityArray(Allocator.Temp);
+        try
+        {
+            foreach (var p in arr)
+            {
+                if (em.GetComponentData<PrefabGUID>(p).GuidHash != Proxies.ProxyGuid || Doomed.IsDying(p) || !Proxies.IsMine(em, prefabs, p)) continue;
+                float d = Caravans.Dist2(Caravans.PositionOf(em, p), me);
+                if (d <= radius && d < bestDist) { bestDist = d; best = p; }
+            }
+        }
+        finally
+        {
+            arr.Dispose();
+            query.Dispose();
+        }
+        if (best == Entity.Null) { ctx.Reply($"No marker of the mod within {radius} m. Markers are used for frozen caravans, or for all in proxy mode."); return; }
+        Proxies.Moved(em, best, me);
+        Plugin.Info($"CarriageTracker movemarker: marker {best.Index}:{best.Version} moved {Math.Round(bestDist)} m to ({Math.Round(me.x)}, {Math.Round(me.z)})");
+        ctx.Reply($"Marker moved {Math.Round(bestDist)} m to you. Open the map: if the carriage icon is now where you stand, moving markers works.");
     }
 
     // ---- dump: everything about caravan carts and their data ----

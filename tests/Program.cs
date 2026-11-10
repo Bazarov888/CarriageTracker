@@ -21,6 +21,7 @@ static class Program
     }
 
     static void True(bool v, string what) { if (!v) throw new Exception(what); }
+    static void False(bool v, string what) { if (v) throw new Exception(what + " should be false"); }
 
     static RouteSnap Route(string key = "R", string move = "Moving", string spawner = "Spawned", Progress stops = null,
                            int units = 0, int onMap = -1, int carts = 0, bool running = false, bool failed = false, string id = null) =>
@@ -584,6 +585,101 @@ static class Program
         {
             Eq<double?>(1060, LootLogic.EmptiedEndTime(1000, 1600));
             Eq<double?>(null, LootLogic.EmptiedEndTime(1000, 1030), "a sooner time stays");
+        });
+
+        // --- 1.0.21: icons and markers (IconLogic), audit 07.11 by Nikolai, A1
+        IconFacts Icon(IconKind kind, bool exists = true, bool caravan = true, bool onMarker = false, bool wanted = true, bool covered = false) =>
+            new(kind, exists, caravan, onMarker, wanted, covered);
+        MarkerFacts Marker(bool made = false, bool oneOfOurs = true, Spawner spawner = Spawner.Caravan, bool wanted = true,
+                           bool current = true, bool moved = false, bool covered = false) =>
+            new(made, oneOfOurs, spawner, wanted, current, moved, covered);
+
+        Test("icon kinds: current first, then earlier, then preset", () =>
+        {
+            var earlier = new HashSet<int> { 2 };
+            var presets = new HashSet<int> { 1, 2, 3 };
+            Eq(IconKind.Current, IconLogic.KindOf(1, 1, earlier, presets));
+            Eq(IconKind.Earlier, IconLogic.KindOf(2, 1, earlier, presets));
+            Eq(IconKind.Preset, IconLogic.KindOf(3, 1, earlier, presets));
+            Eq(IconKind.Other, IconLogic.KindOf(4, 1, earlier, presets));
+        });
+        Test("an icon of the current kind on a wanted caravan stays, a second one goes", () =>
+        {
+            Eq((IconAct.Keep, DropWhy.None), IconLogic.ForIcon(Icon(IconKind.Current)));
+            Eq((IconAct.Drop, DropWhy.Duplicate), IconLogic.ForIcon(Icon(IconKind.Current, covered: true)));
+        });
+        Test("icon on a caravan that no longer gets one goes (it froze: the marker takes over)", () =>
+            Eq((IconAct.Drop, DropWhy.Unwanted), IconLogic.ForIcon(Icon(IconKind.Current, wanted: false))));
+        Test("icon of an earlier kind or a preset on a caravan goes (Icon changed)", () =>
+        {
+            Eq((IconAct.Drop, DropWhy.Kind), IconLogic.ForIcon(Icon(IconKind.Earlier)));
+            Eq((IconAct.Drop, DropWhy.Kind), IconLogic.ForIcon(Icon(IconKind.Preset)));
+        });
+        Test("another mod's icon on a caravan is left alone", () =>
+            Eq(IconAct.Ignore, IconLogic.ForIcon(Icon(IconKind.Other)).Act));
+        Test("an icon of the mod's kind whose object is gone goes", () =>
+            Eq((IconAct.Drop, DropWhy.Gone), IconLogic.ForIcon(Icon(IconKind.Current, exists: false, caravan: false))));
+        Test("a merchant icon on a game merchant is never touched (Icon = merchant, audit 07.11 R4)", () =>
+        {
+            Eq(IconAct.Ignore, IconLogic.ForIcon(Icon(IconKind.Current, exists: true, caravan: false)).Act, "on a living merchant");
+            Eq(IconAct.Ignore, IconLogic.ForIcon(Icon(IconKind.Current, exists: false, caravan: false, onMarker: true)).Act, "on a marker");
+        });
+        Test("a preset icon off a caravan is left alone (it may be the game's)", () =>
+            Eq(IconAct.Ignore, IconLogic.ForIcon(Icon(IconKind.Preset, exists: false, caravan: false)).Act));
+
+        Test("KindredPortals marker (spawned by a player) is never the mod's (audit 02.11)", () =>
+        {
+            False(IconLogic.Owned(Marker(spawner: Spawner.Other)), "not owned");
+            Eq(IconAct.Ignore, IconLogic.ForMarker(Marker(spawner: Spawner.Other)).Act);
+        });
+        Test("after a restart a marker with our icon spawned by a caravan or by nothing is the mod's", () =>
+        {
+            True(IconLogic.Owned(Marker(spawner: Spawner.Caravan)), "caravan");
+            True(IconLogic.Owned(Marker(spawner: Spawner.Gone)), "gone");
+            True(IconLogic.Owned(Marker(spawner: Spawner.None)), "none");
+            False(IconLogic.Owned(Marker(oneOfOurs: false, spawner: Spawner.None)), "two icons or another kind");
+        });
+        Test("a marker the mod made is its own whatever spawned it", () =>
+            True(IconLogic.Owned(Marker(made: true, oneOfOurs: false, spawner: Spawner.Other)), "made here"));
+        Test("the mod's marker: kept, or removed with the reason", () =>
+        {
+            Eq((IconAct.Keep, DropWhy.None), IconLogic.ForMarker(Marker()));
+            Eq((IconAct.Drop, DropWhy.Gone), IconLogic.ForMarker(Marker(spawner: Spawner.Gone)), "caravan gone while the server was off");
+            Eq((IconAct.Drop, DropWhy.Unwanted), IconLogic.ForMarker(Marker(wanted: false)), "caravan thawed");
+            Eq((IconAct.Drop, DropWhy.Kind), IconLogic.ForMarker(Marker(current: false)), "Icon changed");
+            Eq((IconAct.Drop, DropWhy.Moved), IconLogic.ForMarker(Marker(moved: true)), "caravan moved away");
+            Eq((IconAct.Drop, DropWhy.Duplicate), IconLogic.ForMarker(Marker(covered: true)), "second marker");
+        });
+        Test("frozen caravan whose route goes on: its marker isn't made anew every check (05.11)", () =>
+        {
+            // Until 1.0.16 every 10 m: a new marker at almost every 30 s check, rows of stale icons along the road.
+            False(IconLogic.MovedFar(true, 40, TimeSpan.FromSeconds(30)), "40 m after 30 s");
+            False(IconLogic.MovedFar(true, 150, TimeSpan.FromMinutes(2)), "150 m but younger than 3 min");
+            True(IconLogic.MovedFar(true, 150, TimeSpan.FromMinutes(3)), "150 m and 3 min old");
+            True(IconLogic.MovedFar(true, 150, null), "left from before a restart: by distance");
+            False(IconLogic.MovedFar(true, 99, null), "under 100 m");
+        });
+        Test("moving caravan in proxy mode: the marker follows in 30 m steps", () =>
+        {
+            False(IconLogic.MovedFar(false, 29, TimeSpan.Zero), "29 m");
+            True(IconLogic.MovedFar(false, 30, TimeSpan.Zero), "30 m");
+        });
+        Test("stale icon on a marker that is gone is swept, only of the mod's own kinds", () =>
+        {
+            True(IconLogic.Orphan(IconKind.Current, false), "current");
+            True(IconLogic.Orphan(IconKind.Earlier, false), "earlier");
+            False(IconLogic.Orphan(IconKind.Preset, false), "preset");
+            False(IconLogic.Orphan(IconKind.Current, true), "marker still there");
+        });
+
+        // --- 1.0.21: objects the game doesn't remove (DoomLogic), audit 07.11 by Nikolai, R1
+        Test("an object still there after 5 min is destroyed once more, after 10 min given up", () =>
+        {
+            Eq(DoomStep.Wait, DoomLogic.Step(TimeSpan.FromMinutes(4), false, false), "4 min");
+            Eq(DoomStep.Retry, DoomLogic.Step(TimeSpan.FromMinutes(5), false, false), "5 min");
+            Eq(DoomStep.Wait, DoomLogic.Step(TimeSpan.FromMinutes(9), true, false), "9 min, tried again");
+            Eq(DoomStep.GiveUp, DoomLogic.Step(TimeSpan.FromMinutes(10), true, false), "10 min");
+            Eq(DoomStep.Wait, DoomLogic.Step(TimeSpan.FromHours(5), true, true), "given up: nothing more");
         });
 
         Console.WriteLine($"{_passed} passed, {_failed} failed");
