@@ -48,7 +48,10 @@ public class Plugin : BasePlugin
             Repeats++;
             return;
         }
-        if (Seen.Count >= 100) Seen.Clear();
+        if (Seen.Count >= 100)
+            foreach (var k in new List<string>(Seen.Keys))
+                if (now - Seen[k].At >= RepeatWindow) Seen.Remove(k);
+        if (Seen.Count >= 100) { Repeats++; return; } // 100 different errors within 10 minutes: the rest only counted
         Seen[key] = (now, 0);
         string again = last.Count > 0 ? $" (the same error {last.Count} more times in the last {Math.Round((now - last.At).TotalMinutes)} min)" : "";
         Error($"{where}{again}: {e}");

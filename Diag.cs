@@ -193,7 +193,7 @@ public class DiagCommands
             {
                 if (em.GetComponentData<PrefabGUID>(p).GuidHash != Proxies.ProxyGuid) continue;
                 string key = $"by {Name(em.GetComponentData<SpawnedBy>(p).Value)}, icon {IconName(Proxies.IconOf(em, p))}, " +
-                             $"mod's: {(Proxies.IsMine(em, prefabs, p) ? "yes" : "no")}";
+                             $"mod's: {(Proxies.IsMine(em, prefabs, p) ? "yes" : "no")}{(Doomed.IsDying(p) ? ", being destroyed" : "")}";
                 markers[key] = (markers.TryGetValue(key, out int n) ? n : 0) + 1;
             }
         }
@@ -278,7 +278,8 @@ public class DiagCommands
         if (best == Entity.Null) { ctx.Reply($"No marker of the mod within {radius} m. Markers are used for frozen caravans, or for all in proxy mode."); return; }
         Proxies.Moved(em, best, me);
         Plugin.Info($"CarriageTracker movemarker: marker {best.Index}:{best.Version} moved {Math.Round(bestDist)} m to ({Math.Round(me.x)}, {Math.Round(me.z)})");
-        ctx.Reply($"Marker moved {Math.Round(bestDist)} m to you. Open the map: if the carriage icon is now where you stand, moving markers works.");
+        ctx.Reply($"Marker moved {Math.Round(bestDist)} m to you. Open the map: if the carriage icon is now where you stand, moving markers works. " +
+                  "A frozen caravan's marker stays here until it is 3 min old and its caravan is 100 m away.");
     }
 
     // ---- dump: everything about caravan carts and their data ----

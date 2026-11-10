@@ -180,6 +180,13 @@ static class Proxies
 
     internal static bool HasPending => Pending.Count > 0;
 
+    // A new server world (Caravans.ServerWorld): entity keys of the old one are forgotten.
+    internal static void Reset()
+    {
+        MadeAt.Clear();
+        Pending.Clear();
+    }
+
     // One icon requested, of one of the given kinds.
     static bool RequestsOneOf(EntityManager em, Entity p, HashSet<int> kinds)
     {
@@ -469,6 +476,9 @@ static class Doomed
     internal static long Retries, GaveUp;
 
     public static bool IsDying(Entity e) => Queued.ContainsKey(Key(e));
+
+    // A new server world (Caravans.ServerWorld): entity keys of the old one are forgotten.
+    internal static void Reset() => Queued.Clear();
 
     public static void Kill(EntityManager em, Entity e, DateTime now)
     {

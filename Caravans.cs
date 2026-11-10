@@ -49,14 +49,17 @@ static class Caravans
     {
         var cached = _world;
         if (cached != null && cached.IsCreated) return cached;
-        if (cached != null || _prefabs != null) Queries.Reset();
         _world = null;
         _prefabs = null;
         if (World.s_AllWorlds == null) return null;
         foreach (var w in World.s_AllWorlds)
             if (w.Name == "Server" && w.IsCreated)
             {
+                // A new world: queries and entity keys (Index, Version) of the old one mean nothing here, and an object
+                // of the old destroy queue could match an unrelated one and be destroyed (review of 1.0.21).
                 Queries.Reset();
+                Doomed.Reset();
+                Proxies.Reset();
                 _world = w;
                 return w;
             }

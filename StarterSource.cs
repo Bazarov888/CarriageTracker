@@ -39,9 +39,12 @@ static partial class Starter
         if (Caravans.Field(sp, "PlayerRange") is not float2 range) return;
         if (SpawnRange.SourceTarget(true, true, range.x, range.y) is not float y) return;
         // ApplySource tries again within 5 seconds.
-        try { SetRangeY(em, patrol, sp, range.x, y); }
+        try
+        {
+            SetRangeY(em, patrol, sp, range.x, y);
+            BlockedRoutes.Add(Key(patrol));
+        }
         catch (Exception e) { Plugin.Warn($"CarriageTracker: route of patrol {patrol.Index}:{patrol.Version} not blocked right away: {e.Message}"); }
-        BlockedRoutes.Add(Key(patrol));
     }
 
     public static int ApplySource(EntityManager em, PrefabCollectionSystem prefabs)

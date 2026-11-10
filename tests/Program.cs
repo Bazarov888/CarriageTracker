@@ -672,6 +672,35 @@ static class Program
             False(IconLogic.Orphan(IconKind.Current, true), "marker still there");
         });
 
+        Test("every icon case decides as up to 1.0.20 (the old condition, Icons.cs:92 of 1.0.20)", () =>
+        {
+            var b = new[] { false, true };
+            foreach (IconKind kind in Enum.GetValues(typeof(IconKind)))
+            foreach (bool exists in b) foreach (bool isCaravan in b) foreach (bool onMarker in b) foreach (bool wanted in b) foreach (bool covered in b)
+            {
+                bool caravan = exists && isCaravan;
+                bool mine = kind != IconKind.Other, ours = kind is IconKind.Current or IconKind.Earlier;
+                // 1.0.20: skip, else keep if current && wanted && first, else drop
+                bool skip = caravan ? !mine : (!ours || exists || onMarker);
+                var old = skip ? IconAct.Ignore : caravan && kind == IconKind.Current && wanted && !covered ? IconAct.Keep : IconAct.Drop;
+                var now = IconLogic.ForIcon(new IconFacts(kind, exists, caravan, onMarker, caravan && wanted, covered)).Act;
+                Eq(old, now, $"{kind} exists={exists} caravan={caravan} onMarker={onMarker} wanted={wanted} covered={covered}");
+            }
+        });
+        Test("every marker case decides as up to 1.0.20 (Proxies.Owned and Sync of 1.0.20)", () =>
+        {
+            var b = new[] { false, true };
+            foreach (Spawner sp in Enum.GetValues(typeof(Spawner)))
+            foreach (bool made in b) foreach (bool one in b) foreach (bool wanted in b) foreach (bool current in b) foreach (bool moved in b) foreach (bool covered in b)
+            {
+                bool owned = made || (one && sp != Spawner.Other);
+                bool w = sp == Spawner.Caravan && wanted; // only caravans are ever wanted
+                var old = !owned ? IconAct.Ignore : w && current && !moved && !covered ? IconAct.Keep : IconAct.Drop;
+                var now = IconLogic.ForMarker(new MarkerFacts(made, made ? false : one, sp, w, current, moved, covered)).Act;
+                Eq(old, now, $"{sp} made={made} one={one} wanted={w} current={current} moved={moved} covered={covered}");
+            }
+        });
+
         // --- 1.0.21: objects the game doesn't remove (DoomLogic), audit 07.11 by Nikolai, R1
         Test("an object still there after 5 min is destroyed once more, after 10 min given up", () =>
         {

@@ -472,7 +472,7 @@ static class Memory
                     $"icons on caravans {Icons.Live} of {Icons.InWorld} (made {Icons.Made - _iconsMade}, removed {Icons.Dropped - _iconsDropped}{Why(Icons.DroppedBy, _iconsBy)}); " +
                     $"markers the mod's {Proxies.Live} of {Proxies.InWorld} (made {Proxies.Made - _markersMade}, removed {Proxies.Dropped - _markersDropped}{Why(Proxies.DroppedBy, _markersBy)}; " +
                     $"stale icons removed {Proxies.Orphans - _orphans}); " +
-                    $"destroy queue {doomed.Waiting}, over a minute {doomed.Stuck}, given up {doomed.GivenUp} " +
+                    $"destroy queue {doomed.Waiting}, of them over a minute {doomed.Stuck}, of them given up {doomed.GivenUp} " +
                     $"(tried again {Doomed.Retries - _retries}, given up {Doomed.GaveUp - _gaveUp}); " +
                     $"repeated errors not written {Plugin.Repeats - _repeats}. Numbers in brackets and of errors: since the last line");
         _iconsMade = Icons.Made; _iconsDropped = Icons.Dropped;
