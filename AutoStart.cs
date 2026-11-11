@@ -18,7 +18,7 @@ static class AutoStart
     static bool _toldBloodcraft;
     static readonly Random Rng = new();
     static DateTime _ready = DateTime.MinValue;
-    public static readonly List<string> LastResults = new();
+    public static readonly List<LateText> LastResults = new();
     static string _lastBlocked = "";
 
     // Time of the previous auto-start in the act. Before the first one: when the server became ready,
@@ -59,7 +59,7 @@ static class AutoStart
         if (results.Count == 0) return;
         // A start is always logged. A reason why nothing started (limit, busy routes) is logged
         // only when it changes, otherwise it would repeat every check.
-        string blocked = string.Join(" | ", results.FindAll(r => !r.Started).ConvertAll(r => r.Text));
+        string blocked = string.Join(" | ", results.FindAll(r => !r.Started).ConvertAll(r => r.Text.ToString()));
         bool started = results.Exists(r => r.Started);
         if (!started && blocked == _lastBlocked) return;
         _lastBlocked = blocked;
@@ -74,29 +74,29 @@ static class AutoStart
 
     // force = ignore the interval (the .cv autonow command). Returns what happened in each act;
     // acts that simply wait for their interval are not reported.
-    public static List<(bool Started, string Text)> Run(EntityManager em, PrefabCollectionSystem prefabs, bool force)
+    public static List<(bool Started, LateText Text)> Run(EntityManager em, PrefabCollectionSystem prefabs, bool force)
     {
-        var results = new List<(bool Started, string Text)>();
+        var results = new List<(bool Started, LateText Text)>();
         if (Starter.Paused)
         {
-            results.Add((false, L.T("cleanup.paused")));
+            results.Add((false, new LateText(() => L.T("cleanup.paused"))));
             return results;
         }
         if (Settings.GameOnly)
         {
-            results.Add((false, L.T("auto.gameonly")));
+            results.Add((false, new LateText(() => L.T("auto.gameonly"))));
             return results;
         }
         GameCheck.Ensure();
         if (!GameCheck.StartsOk)
         {
-            results.Add((false, L.T("start.broken", GameCheck.Missing)));
+            results.Add((false, new LateText(() => L.T("start.broken", GameCheck.Missing))));
             return results;
         }
         var online = Acts.Online(em, prefabs);
         if (online.Count == 0)
         {
-            if (force) results.Add((false, L.T("auto.nobody")));
+            if (force) results.Add((false, new LateText(() => L.T("auto.nobody"))));
             return results;
         }
 
@@ -130,7 +130,7 @@ static class AutoStart
         foreach (int playerAct in playerActs)
         {
             var acts = ActLogic.Served(playerAct, actsWithRoutes, Settings.EmptyActMode);
-            if (acts.Count == 0) results.Add((false, L.T("auto.noroutes", L.Act(playerAct))));
+            if (acts.Count == 0) results.Add((false, new LateText(() => L.T("auto.noroutes", L.Act(playerAct)))));
             foreach (int a in acts) if (!toServe.Contains(a)) toServe.Add(a);
         }
 
@@ -141,12 +141,14 @@ static class AutoStart
 
             if (Starter.AutoCount() >= maxTotal)
             {
-                results.Add((false, L.T("auto.maxtotal", Starter.AutoCount(), maxTotal)));
+                int total = Starter.AutoCount();
+                results.Add((false, new LateText(() => L.T("auto.maxtotal", total, maxTotal))));
                 break;
             }
             if (Starter.AutoCount(act) >= maxPerAct)
             {
-                results.Add((false, L.T("auto.maxact", L.Act(act), Starter.AutoCount(act), maxPerAct)));
+                int inAct = Starter.AutoCount(act);
+                results.Add((false, new LateText(() => L.T("auto.maxact", L.Act(act), inAct, maxPerAct))));
                 continue;
             }
             var candidates = routes.FindAll(r => InAct(r, act));
@@ -161,7 +163,7 @@ static class AutoStart
             }
             if (free.Count == 0)
             {
-                results.Add((false, L.T("auto.busy", L.Act(act))));
+                results.Add((false, new LateText(() => L.T("auto.busy", L.Act(act)))));
                 continue;
             }
             int chosen = RouteLogic.Choose(snaps, Settings.ResetToStart.Value, Settings.RotatePick,
@@ -169,7 +171,7 @@ static class AutoStart
             var pick = free[chosen];
             // A start that didn't happen (an error, the route already started) doesn't count as this act's start:
             // the next check tries again, and a route whose start failed is skipped for an hour (RecentlyFailed).
-            if (!Starter.TryStart(em, pick, Entity.Null, out string why, true, act,
+            if (!Starter.TryStart(em, pick, Entity.Null, out var why, true, act,
                                   $", picked from {free.Count} free: {RouteLogic.Groups(snaps)}, this one {RouteLogic.Group(snaps[chosen])}"))
             {
                 results.Add((false, why));
@@ -178,7 +180,8 @@ static class AutoStart
             var stops = Routes.StopsOf(em, pick.Patrol);
             LastStart[act] = now;
             LastRouteStart[snaps[chosen].Ident] = now;
-            results.Add((true, L.T("auto.started", Routes.Name(pick), L.Act(act), free.Count, Routes.StopText(stops))));
+            int freeCount = free.Count;
+            results.Add((true, new LateText(() => L.T("auto.started", Routes.Name(pick), L.Act(act), freeCount, Routes.StopText(stops)))));
         }
         return results;
     }

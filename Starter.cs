@@ -138,8 +138,8 @@ static partial class Starter
     // note: why this route was picked, for the log line (auto-start). Returns the reply for the player.
     public static string Start(EntityManager em, Routes.Route route, Entity userEntity, bool auto = false, int act = 0, string note = "")
     {
-        TryStart(em, route, userEntity, out string text, auto, act, note);
-        return text;
+        TryStart(em, route, userEntity, out var text, auto, act, note);
+        return text.ToString();
     }
 
     // true if the caravan is being started. A start writes into the route step by step (the old squad removed,
@@ -147,18 +147,35 @@ static partial class Starter
     // between left the route with the start's endless range and zero timers until the server restarted, as
     // RepairLeftovers runs once after the start (audit of 07.11). Now such a route is repaired at once (or, if that
     // fails, every 5 seconds by RetryRepairs) and auto-start skips it for an hour (RecentlyFailed).
-    public static bool TryStart(EntityManager em, Routes.Route route, Entity userEntity, out string text,
+    // text: the reply, made in the language of whoever reads it (auto-start keeps it for .cv auto, LateText).
+    public static bool TryStart(EntityManager em, Routes.Route route, Entity userEntity, out LateText text,
                                 bool auto = false, int act = 0, string note = "")
     {
         var patrol = route.Patrol;
-        string name = Routes.Name(route);
         GameCheck.Ensure();
-        if (!GameCheck.StartsOk) { text = L.T("start.broken", GameCheck.Missing); return false; }
-        if (Paused) { text = L.T("cleanup.paused"); return false; }
-        if (IsRunning(patrol)) { text = L.T("start.already", name); return false; }
+        if (!GameCheck.StartsOk) { text = new LateText(() => L.T("start.broken", GameCheck.Missing)); return false; }
+        if (Paused) { text = new LateText(() => L.T("cleanup.paused")); return false; }
+        if (IsRunning(patrol)) { text = new LateText(() => L.T("start.already", Routes.Name(route))); return false; }
+        // A route still waiting for its settings back is repaired here first: a start would save the start's settings
+        // as its own. If that fails again it isn't started (review of 11.11).
+        if (AwaitsRepair(patrol))
+        {
+            try
+            {
+                RepairRoute(em, route);
+                RepairQueue.Remove(Key(patrol));
+                Plugin.Info($"CarriageTracker: route {route.Key} patrol {patrol.Index}:{patrol.Version} got its settings back before a start");
+            }
+            catch (Exception e)
+            {
+                Plugin.Warn($"CarriageTracker start: route {route.Key} not started, its settings still can't be given back: {e.Message}");
+                text = new LateText(() => L.T("start.repairing", Routes.Name(route)));
+                return false;
+            }
+        }
         try
         {
-            text = Begin(em, route, userEntity, auto, act, note);
+            text = LateText.Of(Begin(em, route, userEntity, auto, act, note));
             return true;
         }
         catch (Exception e)
@@ -184,7 +201,7 @@ static partial class Starter
                 }
             }
             Plugin.Error($"CarriageTracker start: route {route.Key} patrol {patrol.Index}:{patrol.Version} failed: {e}{after}");
-            text = L.T(tracked ? "start.goingon" : "start.error", name);
+            text = new LateText(() => L.T(tracked ? "start.goingon" : "start.error", Routes.Name(route)));
             return tracked;
         }
     }
@@ -217,6 +234,21 @@ static partial class Starter
         object boxed = sp;
         run.Saved["PlayerRange"] = boxed.GetType().GetField("PlayerRange")?.GetValue(boxed);
         foreach (var f in TimingFields) run.Saved[f] = boxed.GetType().GetField(f)?.GetValue(boxed);
+        // A route that still has a start's values (a start not undone) gets its normal ones saved instead, so the end
+        // of this start doesn't write the start's values back for good.
+        var normal = NormalOf(em, patrol);
+        if (run.Saved["PlayerRange"] is float2 range && SpawnRange.IsStart(range.x, range.y))
+        {
+            run.Saved["PlayerRange"] = new float2(0f, normal.RangeY);
+            Plugin.Warn($"CarriageTracker start: route {route.Key} had a start's spawn range, its normal one is restored after this start");
+        }
+        if (TimersZero(boxed))
+        {
+            run.Saved["RespawnTimeModifier"] = normal.Modifier;
+            run.Saved["MinRespawnTime"] = normal.MinRespawn;
+            run.Saved["MaxRespawnTime"] = normal.MaxRespawn;
+            Plugin.Warn($"CarriageTracker start: route {route.Key} had a start's respawn timers, its normal ones are restored after this start");
+        }
         run.State.Phase = RunLogic.FirstPhase(Routes.MoveStatus(em, patrol));
         if (run.State.Phase == RunPhase.Armed) Arm(em, run);
         else
@@ -378,7 +410,16 @@ static partial class Starter
     public static int StopAll(EntityManager em)
     {
         int n = Runs.Count;
-        foreach (var run in Runs) Finish(em, run, "stopped by command");
+        // One run that can't be finished must not keep the others going (review of 11.11).
+        foreach (var run in Runs)
+        {
+            try { Finish(em, run, "stopped by command"); }
+            catch (Exception e)
+            {
+                Plugin.Error($"CarriageTracker start: {run.Route} can't be finished: {e.Message}");
+                QueueRepair(run.Patrol, run.Route);
+            }
+        }
         Runs.Clear();
         return n;
     }

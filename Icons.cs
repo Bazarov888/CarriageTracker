@@ -20,6 +20,7 @@ static class Icons
     // object (InWorld; the game's own merchant icons on its markers aren't counted, audit 07.11 R4).
     internal static long Made, Dropped;
     internal static readonly Dictionary<DropWhy, long> DroppedBy = new();
+    static int? _missingIcon; // the Icon already warned about as missing, so it isn't written at every check
     internal static int Live, InWorld;
 
     internal static void Count(Dictionary<DropWhy, long> by, DropWhy why) => by[why] = (by.TryGetValue(why, out long n) ? n : 0) + 1;
@@ -127,9 +128,11 @@ static class Icons
         int created = 0;
         if (!prefabs._PrefabGuidToEntityMap.TryGetValue(new PrefabGUID(iconGuid), out Entity iconPrefab))
         {
-            Plugin.Warn($"CarriageTracker: icon prefab {iconGuid} not found, no icons created");
+            if (_missingIcon != iconGuid) Plugin.Warn($"CarriageTracker: icon prefab {iconGuid} not found, no icons created (Icon in the config)");
+            _missingIcon = iconGuid;
             return (0, removed, globalized);
         }
+        _missingIcon = null;
         foreach (var kv in wanted)
         {
             if (covered.Contains(kv.Key)) continue;

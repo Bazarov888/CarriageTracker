@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.22
+
+Fixes from a code review of 11.11.
+
+- `.cv l`, `.cv m`, `.cv stats`, start replies and the last results in `.cv auto` are now always in the reader's language. Before, the caravan notes and stats were made at the check in the language of whoever caused it (usually the server's), so a player could get a line half in their language, half in another.
+- The two MilitiaCotton patrols keep their numbers: routes with the same key are ordered west to east (where their patrols stand at that moment, about 600 m apart). Before, their order could change between `.cv routes` and `.cv start N` when freeze tags came and went, so a start could take the other Cotton.
+- A route whose settings couldn't be given back after a start is repaired first when it is started next, and not started if that fails; auto-start skips it for an hour. A start of a route that still has a start's spawn range or zero respawn timers saves the route's normal values instead, so they can't stay for good.
+- A failing announcement no longer stops the check (before, the same caravan was announced again every 30 seconds), and `.cv stop` / `.cv cleanup` finish every start even if one of them fails.
+- `.cv lang` says when the choice couldn't be saved to the file yet. A wrong `Icon` in the config is warned about once, not at every check.
+
 ## 1.0.21
 
 After the architecture and memory audit of 07.11 (Nikolai). No change to what players see; the server log and the memory line say more, and the mod makes less garbage.

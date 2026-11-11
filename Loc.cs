@@ -131,6 +131,7 @@ static class L
         ["route.state.other"] = "{0}/{1}, units {2}",
 
         ["start.already"] = "Carriage {0} is already being started.",
+        ["start.repairing"] = "Route {0} can't be started: its settings couldn't be given back after an earlier start. See the server log.",
         ["start.error"] = "Carriage {0} couldn't be started: an error, see the server log. The route's own settings are put back.",
         ["start.goingon"] = "Starting carriage {0}. An error was written to the server log, the start goes on.",
         ["start.broken"] = "Starting carriages is off on this game version: it lacks {0}. See the server log.",
@@ -180,6 +181,7 @@ static class L
         ["icons.head"] = "Icons: {0}, page {1}/{2}. All of them are written to the server log.",
         ["mode.bad"] = "Mode: direct or proxy.",
         ["lang.ok"] = "Language: English. Only for you; other players keep theirs.",
+        ["lang.unsaved"] = "It couldn't be saved to the server's file yet and may be lost at a restart.",
         ["welcome"] = "Welcome! Every carriage here is shown on the map, and new ones set out in your act. {0} - carriages by distance, {1} - map marker on the nearest. Language: {2} / {3}",
 
         ["auto.off"] = "Auto-start is off. Turn it on: .cv auto <minutes>",
@@ -270,6 +272,7 @@ static class L
         ["route.state.other"] = "{0}/{1}, юнитов {2}",
 
         ["start.already"] = "Караван «{0}» уже запускается.",
+        ["start.repairing"] = "Маршрут «{0}» нельзя запустить: после прошлого запуска ему не удалось вернуть настройки. Подробности в логе сервера.",
         ["start.error"] = "Караван «{0}» не запустился: ошибка, подробности в логе сервера. Маршруту возвращаются его настройки.",
         ["start.goingon"] = "Запускаю караван «{0}». В лог сервера записана ошибка, запуск продолжается.",
         ["start.broken"] = "Запуск караванов выключен на этой версии игры: в ней нет {0}. Подробности в логе сервера.",
@@ -319,6 +322,7 @@ static class L
         ["icons.head"] = "Иконок: {0}, страница {1}/{2}. Все записаны в лог сервера.",
         ["mode.bad"] = "Режим: direct или proxy.",
         ["lang.ok"] = "Язык: русский. Только для тебя, у остальных игроков свой.",
+        ["lang.unsaved"] = "Сохранить выбор в файл сервера пока не удалось, после рестарта он может пропасть.",
         ["welcome"] = "Добро пожаловать! Здесь все караваны видны на карте, а новые выходят в твоём акте. {0} - список караванов, {1} - метка на ближайшем. Язык: {2} / {3}",
 
         ["auto.off"] = "Автозапуск выключен. Включить: .cv auto <минуты>",
@@ -344,4 +348,16 @@ static class L
         ["auto.busy"] = "{0}: на всех маршрутах уже есть караваны.",
         ["auto.started"] = "{1}: запущен «{0}» (свободных маршрутов: {2}; {3}).",
     };
+}
+
+// Chat text made now but read later, by someone whose language may differ: a caravan's note in the cache of the last
+// check (.cv l, .cv m), the last check's stats, auto-start's last results (.cv auto). Made in the reader's language
+// when it is read (string.Format and ToString call it), not in the language of whoever happened to cause the check.
+// Until 1.0.22 a player got these half in their language, half in the server's (review of 11.11).
+sealed class LateText
+{
+    readonly Func<string> _make;
+    public LateText(Func<string> make) => _make = make;
+    public static LateText Of(string done) => new(() => done);
+    public override string ToString() => _make();
 }
