@@ -170,8 +170,8 @@ static class Tracker
     static DateTime _lastSafetyAt = DateTime.MinValue;
     static long _lastSafetyMs = -1;
     static int _lastMissed;
-    static string _lastStats;
-    public static string LastStats => _lastStats ?? L.T("stats.none");
+    static LateText _lastStats;
+    public static string LastStats => _lastStats?.ToString() ?? L.T("stats.none");
     public static List<Caravans.Caravan> Current => _caravans;
     static HashSet<(int, int)> _announced = new();
     static bool _primed;
@@ -278,8 +278,13 @@ static class Tracker
             bool byMod = f.Patrol != Entity.Null && Starter.IsRunning(f.Patrol);
             string stops = f.Stops != null ? $", stop {f.Stops.Log}" : "";
             Plugin.Info($"CarriageTracker: caravan {f.Route} set out at ({Math.Round(f.Pos.x)}, {Math.Round(f.Pos.z)}){stops}{(byMod ? ", started by the mod" : "")}");
+            // An announcement that fails must not stop the check: until 1.0.22 it did, before the announced carts were
+            // saved, so the same cart was announced again every 30 s (review of 11.11).
             if (Settings.Announce.Value && (byMod || Settings.AnnounceVanilla.Value))
-                Announcer.CaravanStarted(em, prefabs, f.Route, f.Patrol, f.Entity, f.Pos);
+            {
+                try { Announcer.CaravanStarted(em, prefabs, f.Route, f.Patrol, f.Entity, f.Pos); }
+                catch (Exception e) { Plugin.Fail("CarriageTracker: announcement", e); }
+            }
         }
         _announced = announced;
         _primed = true;
@@ -313,13 +318,20 @@ static class Tracker
         int parked = found.FindAll(f => f.Kind != Kind.Horse && !Caravans.OnMap(f.Pos)).Count;
         int frozenCount = _caravans.FindAll(c => c.Frozen).Count;
 
-        _lastStats = L.T("stats.main", proxyMode ? "proxy" : "direct", ms, fastMs, scanned) +
-                     (full ? L.T("stats.full", _lastSafetyMs) : "") + ". " +
-                     L.T("stats.counts", _caravans.Count, empty, frozenCount) +
+        // The numbers of this check, put into words when someone reads them, in their language (LateText).
+        string mode = proxyMode ? "proxy" : "direct";
+        int count = _caravans.Count;
+        long safetyMs = _lastSafetyMs;
+        double safetyAgo = Math.Round((now - _lastSafetyAt).TotalMinutes);
+        int missed = _lastMissed;
+        _lastStats = new LateText(() =>
+                     L.T("stats.main", mode, ms, fastMs, scanned) +
+                     (full ? L.T("stats.full", safetyMs) : "") + ". " +
+                     L.T("stats.counts", count, empty, frozenCount) +
                      (parked > 0 ? L.T("stats.parked", parked) : "") + ". " +
                      L.T("stats.icons", created, removed) +
                      (globalized > 0 ? L.T("stats.globalized", globalized) : "") + "." +
-                     (_lastSafetyMs >= 0 ? " " + L.T("stats.safety", Math.Round((now - _lastSafetyAt).TotalMinutes), _lastMissed) : "");
+                     (safetyMs >= 0 ? " " + L.T("stats.safety", safetyAgo, missed) : ""));
         if (created > 0 || removed > 0 || globalized > 0)
             Plugin.Trace($"CarriageTracker: check {ms} ms (fast {fastMs} ms over {scanned}), caravans {_caravans.Count}, " +
                                   $"empty containers {empty}, icons added {created}, removed {removed}, made global {globalized}");

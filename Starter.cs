@@ -156,6 +156,7 @@ static partial class Starter
         if (!GameCheck.StartsOk) { text = L.T("start.broken", GameCheck.Missing); return false; }
         if (Paused) { text = L.T("cleanup.paused"); return false; }
         if (IsRunning(patrol)) { text = L.T("start.already", name); return false; }
+        if (AwaitsRepair(patrol)) { text = L.T("start.repairing", name); return false; }
         try
         {
             text = Begin(em, route, userEntity, auto, act, note);
@@ -217,6 +218,21 @@ static partial class Starter
         object boxed = sp;
         run.Saved["PlayerRange"] = boxed.GetType().GetField("PlayerRange")?.GetValue(boxed);
         foreach (var f in TimingFields) run.Saved[f] = boxed.GetType().GetField(f)?.GetValue(boxed);
+        // A route that still has a start's values (a start not undone) gets its normal ones saved instead, so the end
+        // of this start doesn't write the start's values back for good.
+        var normal = NormalOf(em, patrol);
+        if (run.Saved["PlayerRange"] is float2 range && SpawnRange.IsStart(range.x, range.y))
+        {
+            run.Saved["PlayerRange"] = new float2(0f, normal.RangeY);
+            Plugin.Warn($"CarriageTracker start: route {route.Key} had a start's spawn range, its normal one is restored after this start");
+        }
+        if (TimersZero(boxed))
+        {
+            run.Saved["RespawnTimeModifier"] = normal.Modifier;
+            run.Saved["MinRespawnTime"] = normal.MinRespawn;
+            run.Saved["MaxRespawnTime"] = normal.MaxRespawn;
+            Plugin.Warn($"CarriageTracker start: route {route.Key} had a start's respawn timers, its normal ones are restored after this start");
+        }
         run.State.Phase = RunLogic.FirstPhase(Routes.MoveStatus(em, patrol));
         if (run.State.Phase == RunPhase.Armed) Arm(em, run);
         else
@@ -378,7 +394,16 @@ static partial class Starter
     public static int StopAll(EntityManager em)
     {
         int n = Runs.Count;
-        foreach (var run in Runs) Finish(em, run, "stopped by command");
+        // One run that can't be finished must not keep the others going (review of 11.11).
+        foreach (var run in Runs)
+        {
+            try { Finish(em, run, "stopped by command"); }
+            catch (Exception e)
+            {
+                Plugin.Error($"CarriageTracker start: {run.Route} can't be finished: {e.Message}");
+                QueueRepair(run.Patrol, run.Route);
+            }
+        }
         Runs.Clear();
         return n;
     }

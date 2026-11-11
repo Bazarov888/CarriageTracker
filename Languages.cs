@@ -20,7 +20,8 @@ static class Languages
 
     public static string Of(ulong platformId) => Store.Of(platformId);
 
-    public static void Set(ulong platformId, string lang) => Store.Set(platformId, lang);
+    // False when the choice couldn't be written to the file yet (it is kept and written later).
+    public static bool Set(ulong platformId, string lang) => Store.Set(platformId, lang);
 }
 
 // Every command of this mod answers in the language of the player who typed it.

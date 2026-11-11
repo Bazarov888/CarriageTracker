@@ -62,7 +62,14 @@ static class Routes
         {
             patrols.Dispose();
         }
-        result.Sort((a, b) => string.CompareOrdinal(a.Key, b.Key));
+        // By key, and two patrols of one key west first: the query's order changes when freeze tags come and go, and
+        // until 1.0.22 the two MilitiaCotton patrols could swap their numbers between .cv routes and .cv start
+        // (review of 11.11).
+        result.Sort((a, b) =>
+        {
+            int byKey = string.CompareOrdinal(a.Key, b.Key);
+            return byKey != 0 ? byKey : Caravans.PositionOf(em, a.Patrol).x.CompareTo(Caravans.PositionOf(em, b.Patrol).x);
+        });
         // Exactly two patrols of one key: the one farther east (greater x, as .cv m directions count) is "east".
         for (int i = 0; i < result.Count;)
         {

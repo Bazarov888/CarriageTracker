@@ -35,7 +35,7 @@ static class Caravans
                         Entity Patrol, Progress Stops, bool Orphan);
     // Icon: whether to put an icon on the map. Frozen at the end of the route get none: they vanish when approached.
     // State: short English state for the server log.
-    public record Caravan(string Route, Entity Target, float3 Pos, string Note, bool Frozen, bool Icon,
+    public record Caravan(string Route, Entity Target, float3 Pos, LateText Note, bool Frozen, bool Icon,
                           Entity Patrol, Progress Stops, string State);
 
     // The server world and its prefab system are looked up once and kept while the world exists (audit 07.11, R3):
@@ -205,19 +205,20 @@ static class Caravans
         bool lootIcon = Settings.IconOnLoot.Value;
         bool frozenIcon = Settings.IconOnFrozen.Value;
         foreach (var c in containers)
-            result.Add(new Caravan(c.Route, c.Entity, c.Pos, L.T("note.loot"), false, lootIcon, Entity.Null, null, "loot"));
+            result.Add(new Caravan(c.Route, c.Entity, c.Pos, new LateText(() => L.T("note.loot")), false, lootIcon, Entity.Null, null, "loot"));
         foreach (var cart in carts)
         {
             bool lootInPlace = containers.Exists(c => c.Route == cart.Route && Dist2(c.Pos, cart.Pos) < 15);
             if (!CaravanRules.ShowCart(OnMap(cart.Pos), lootInPlace, cart.Status, cart.Orphan)) continue;
-            string stops = Routes.StopText(cart.Stops);
-            string stopNote = stops.Length > 0 ? ", " + stops : "";
+            var progress = cart.Stops;
+            string StopNote() { string stops = Routes.StopText(progress); return stops.Length > 0 ? ", " + stops : ""; }
+            string status = cart.Status;
             string stopLog = cart.Stops != null ? $" stop {cart.Stops.Log}" : "";
             if (!cart.Frozen)
-                result.Add(new Caravan(cart.Route, cart.Entity, cart.Pos, L.T("note.moving", stopNote), false, true,
+                result.Add(new Caravan(cart.Route, cart.Entity, cart.Pos, new LateText(() => L.T("note.moving", StopNote())), false, true,
                                        cart.Patrol, cart.Stops, "moving" + stopLog));
             else
-                result.Add(new Caravan(cart.Route, cart.Entity, cart.Pos, L.T("note.frozen", cart.Status, stopNote), true, frozenIcon,
+                result.Add(new Caravan(cart.Route, cart.Entity, cart.Pos, new LateText(() => L.T("note.frozen", status, StopNote())), true, frozenIcon,
                                        cart.Patrol, cart.Stops, $"frozen ({cart.Status})" + stopLog));
         }
         return result;

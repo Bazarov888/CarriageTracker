@@ -91,7 +91,16 @@ static partial class Starter
     // (from the Source pass of the Ticker) until it works.
     static readonly Dictionary<(int, int), string> RepairQueue = new();
 
-    static void QueueRepair(Entity patrol, string route) => RepairQueue[Key(patrol)] = route;
+    // A route waiting for its repair still has a start's settings: it isn't started again until repaired (TryStart),
+    // since a start would save those settings as the route's own, and auto-start skips it for an hour (review of
+    // 11.11: until 1.0.22 a route whose Finish failed could be started again and kept the start's settings).
+    static void QueueRepair(Entity patrol, string route)
+    {
+        RepairQueue[Key(patrol)] = route;
+        FailedAt[Key(patrol)] = DateTime.UtcNow;
+    }
+
+    static bool AwaitsRepair(Entity patrol) => RepairQueue.ContainsKey(Key(patrol));
 
     public static void RetryRepairs(EntityManager em, PrefabCollectionSystem prefabs)
     {

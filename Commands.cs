@@ -231,9 +231,9 @@ public class Commands
     {
         lang = lang.Trim().ToLowerInvariant();
         if (!L.Known(lang)) { ctx.Reply("en | ru"); return; }
-        Languages.Set(ctx.Event.User.PlatformId, lang);
+        bool saved = Languages.Set(ctx.Event.User.PlatformId, lang);
         L.Use(lang);
-        ctx.Reply(L.T("lang.ok"));
+        ctx.Reply(saved ? L.T("lang.ok") : L.T("lang.ok") + " " + L.T("lang.unsaved"));
     }
 
     // ---- admin: starting caravans ----
@@ -281,7 +281,7 @@ public class Commands
             parts.Add(L.T("auto.actline", L.Act(act), Starter.AutoCount(act), Math.Ceiling(AutoStart.MinutesLeft(act))));
         foreach (var line in ChatLines.Pack(parts, "; ")) ctx.Reply(line);
         if (AutoStart.LastResults.Count > 0)
-            foreach (var line in ChatLines.Pack(AutoStart.LastResults, "; ", L.T("auto.last", ""))) ctx.Reply(line);
+            foreach (var line in ChatLines.Pack(AutoStart.LastResults.ConvertAll(t => t.ToString()), "; ", L.T("auto.last", ""))) ctx.Reply(line);
     }
 
     static string SourceText() =>
@@ -325,7 +325,7 @@ public class Commands
         foreach (var r in results)
         {
             Plugin.Info($"CarriageTracker auto (command): {r.Text}");
-            ctx.Reply(r.Text);
+            ctx.Reply(r.Text.ToString());
         }
     }
 }
