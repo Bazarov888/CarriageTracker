@@ -65,10 +65,12 @@ static class Routes
         // By key, and two patrols of one key west first: the query's order changes when freeze tags come and go, and
         // until 1.0.22 the two MilitiaCotton patrols could swap their numbers between .cv routes and .cv start
         // (review of 11.11).
+        var x = new Dictionary<(int, int), float>();
+        foreach (var r in result) x[(r.Patrol.Index, r.Patrol.Version)] = Caravans.PositionOf(em, r.Patrol).x;
         result.Sort((a, b) =>
         {
             int byKey = string.CompareOrdinal(a.Key, b.Key);
-            return byKey != 0 ? byKey : Caravans.PositionOf(em, a.Patrol).x.CompareTo(Caravans.PositionOf(em, b.Patrol).x);
+            return byKey != 0 ? byKey : x[(a.Patrol.Index, a.Patrol.Version)].CompareTo(x[(b.Patrol.Index, b.Patrol.Version)]);
         });
         // Exactly two patrols of one key: the one farther east (greater x, as .cv m directions count) is "east".
         for (int i = 0; i < result.Count;)

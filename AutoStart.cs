@@ -171,10 +171,10 @@ static class AutoStart
             var pick = free[chosen];
             // A start that didn't happen (an error, the route already started) doesn't count as this act's start:
             // the next check tries again, and a route whose start failed is skipped for an hour (RecentlyFailed).
-            if (!Starter.TryStart(em, pick, Entity.Null, out string why, true, act,
+            if (!Starter.TryStart(em, pick, Entity.Null, out var why, true, act,
                                   $", picked from {free.Count} free: {RouteLogic.Groups(snaps)}, this one {RouteLogic.Group(snaps[chosen])}"))
             {
-                results.Add((false, LateText.Of(why)));
+                results.Add((false, why));
                 continue;
             }
             var stops = Routes.StopsOf(em, pick.Patrol);

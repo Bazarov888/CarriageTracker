@@ -131,7 +131,7 @@ static class L
         ["route.state.other"] = "{0}/{1}, units {2}",
 
         ["start.already"] = "Carriage {0} is already being started.",
-        ["start.repairing"] = "Route {0} is getting its normal settings back after a failed start; try again in a minute. See the server log.",
+        ["start.repairing"] = "Route {0} can't be started: its settings couldn't be given back after an earlier start. See the server log.",
         ["start.error"] = "Carriage {0} couldn't be started: an error, see the server log. The route's own settings are put back.",
         ["start.goingon"] = "Starting carriage {0}. An error was written to the server log, the start goes on.",
         ["start.broken"] = "Starting carriages is off on this game version: it lacks {0}. See the server log.",
@@ -272,7 +272,7 @@ static class L
         ["route.state.other"] = "{0}/{1}, юнитов {2}",
 
         ["start.already"] = "Караван «{0}» уже запускается.",
-        ["start.repairing"] = "Маршруту «{0}» возвращаются обычные настройки после неудачного запуска, попробуй через минуту. Подробности в логе сервера.",
+        ["start.repairing"] = "Маршрут «{0}» нельзя запустить: после прошлого запуска ему не удалось вернуть настройки. Подробности в логе сервера.",
         ["start.error"] = "Караван «{0}» не запустился: ошибка, подробности в логе сервера. Маршруту возвращаются его настройки.",
         ["start.goingon"] = "Запускаю караван «{0}». В лог сервера записана ошибка, запуск продолжается.",
         ["start.broken"] = "Запуск караванов выключен на этой версии игры: в ней нет {0}. Подробности в логе сервера.",

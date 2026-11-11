@@ -94,10 +94,12 @@ static partial class Starter
     // A route waiting for its repair still has a start's settings: it isn't started again until repaired (TryStart),
     // since a start would save those settings as the route's own, and auto-start skips it for an hour (review of
     // 11.11: until 1.0.22 a route whose Finish failed could be started again and kept the start's settings).
-    static void QueueRepair(Entity patrol, string route)
+    // failed = false: a leftover found at the server start (RepairLeftovers), not a failed start; it isn't
+    // skipped by auto-start for an hour, only repaired before its next start.
+    static void QueueRepair(Entity patrol, string route, bool failed = true)
     {
         RepairQueue[Key(patrol)] = route;
-        FailedAt[Key(patrol)] = DateTime.UtcNow;
+        if (failed) FailedAt[Key(patrol)] = DateTime.UtcNow;
     }
 
     static bool AwaitsRepair(Entity patrol) => RepairQueue.ContainsKey(Key(patrol));
@@ -135,7 +137,7 @@ static partial class Starter
             try { if (RepairRoute(em, r)) repaired++; }
             catch (Exception e)
             {
-                QueueRepair(r.Patrol, r.Key);
+                QueueRepair(r.Patrol, r.Key, failed: false);
                 Plugin.Error($"CarriageTracker: repair of route {r.Key} failed, will try again: {e.Message}");
             }
         }

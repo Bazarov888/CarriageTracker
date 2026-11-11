@@ -46,7 +46,7 @@ A change of behaviour starts with a test case.
 | `StarterAnimal.cs` | The caravan's animal: its state in the log, mortal again once its cart is lost; leftover spawn buffs removed from the squad. |
 | `Acts.cs` | Act of a player (by V Blood drunk or by level, `PlayerAct`) and of a route (by its region, `RouteActs`, or guard level for an unknown route). |
 | `Commands.cs` | Chat commands (VampireCommandFramework). |
-| `Loc.cs` | Chat texts in English and Russian; `L` answers in the language in use for the current player. |
+| `Loc.cs` | Chat texts in English and Russian; `L` answers in the language in use for the current player. Texts made at a check and read later (`Caravan.Note`, `Tracker.LastStats`, `AutoStart.LastResults`, start replies) are `LateText`, put into words when read, in the reader's language. |
 | `Languages.cs` | Each player's own language (`BepInEx/config/CarriageTracker.languages.txt`, kept by `LanguageStore`) and the VCF middleware that switches to it for every command of this mod. |
 | `Diag.cs` | Developer commands `.cvdiag`, registered only with `EnableDiagnostics = true`: components of a caravan object, objects nearby, dumps of carts and patrols, the mod's markers and icons (`markers`), moving a marker (`movemarker`). |
 
@@ -78,7 +78,8 @@ Observed on a live server (game build with BepInEx 6.0.0-be.733):
   times; MilitiaIron's first stop is 266 m from its last).
 - Two different patrols can carry the same route key: MilitiaCotton has a 4-stop and a 7-stop route (01.11), the
   wiki's Western and Eastern Cotton. Start history and failures are kept by patrol, not by key; `Routes.Route.Side`
-  names them east and west by where the patrols are (about 600 m apart).
+  names them east and west by where the patrols are (about 600 m apart). `Routes.Scan` orders routes by key and
+  then west to east, so the numbers of `.cv routes` and `.cv start N` don't swap when the game's query order changes.
 - The two Oakveil patrols (Blackfang) have `PatrolType = Sequential`, every other caravan route `Sequential_Once`
   (dump of 30.10): their path has no end and the caravan circles until destroyed, as the wiki says.
   `Progress.Loop` carries this: such a route is never put back to its start, counts as standing at its start when
@@ -119,6 +120,10 @@ Not verified, treated as assumptions:
 - A start writes into the route step by step and is tracked only once it is in `Runs`. An error before that
   (`Starter.TryStart`) repairs the route at once (`RepairRoute`; if that fails too, it is queued and retried every
   5 s) and marks it failed, so auto-start skips it for an hour; auto-start counts a start only when it happened.
+  The same goes for a run whose end (`Finish`) couldn't give the settings back. A route still in that queue is
+  repaired first when it is started and isn't started if that fails, and `Begin` saves the route's normal values
+  instead of a start's (range over 1000 m, zero timers) if it finds them, so they can't be written back for good
+  (review of 11.11).
 - Fields and types read by name (spawner range and timers, the freeze tags, stop indexes, `PatrolBusStopNode`)
   are checked once at the first check (`GameCheck`). If one a start can't be undone without is missing, starts,
   auto-start and `Source = Mod` are off (blocked routes are opened again) with one error in the log; tracking,
