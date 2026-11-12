@@ -60,6 +60,7 @@ static class Caravans
                 Queries.Reset();
                 Doomed.Reset();
                 Proxies.Reset();
+                Starter.TrialReset();
                 _world = w;
                 return w;
             }

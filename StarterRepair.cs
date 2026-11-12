@@ -201,6 +201,12 @@ static partial class Starter
     {
         Paused = true;
         int runs = StopAll(em);
+        // A trial caravan (.cvdiag trial) doesn't outlive the mod: left behind, its copy would be one more route.
+        if (HasTrial)
+        {
+            try { RemoveTrial(em); }
+            catch (Exception e) { Plugin.Error($"CarriageTracker: the trial caravan can't be removed: {e.Message}. After the restart: .cvdiag trialfind"); }
+        }
         int routes = 0, units = 0;
         var tag = Tag("DisableWhenNoPlayersInRange");
         foreach (var r in Routes.All(em, prefabs))

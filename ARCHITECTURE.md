@@ -50,7 +50,7 @@ A change of behaviour starts with a test case.
 | `Commands.cs` | Chat commands (VampireCommandFramework). |
 | `Loc.cs` | Chat texts in English and Russian; `L` answers in the language in use for the current player. Texts made at a check and read later (`Caravan.Note`, `Tracker.LastStats`, `AutoStart.LastResults`, start replies) are `LateText`, put into words when read, in the reader's language. |
 | `Languages.cs` | Each player's own language (`BepInEx/config/CarriageTracker.languages.txt`, kept by `LanguageStore`) and the VCF middleware that switches to it for every command of this mod. |
-| `Diag.cs` | Developer commands `.cvdiag`, registered only with `EnableDiagnostics = true`: components of a caravan object, objects nearby, dumps of carts and patrols, the mod's markers and icons (`markers`), moving a marker (`movemarker`), game prefabs by a part of their name (`prefabs`), game component types by a part of their name with the objects that have them (`types`). |
+| `Diag.cs` | Developer commands `.cvdiag`, registered only with `EnableDiagnostics = true`: components of a caravan object, objects nearby, dumps of carts and patrols, the mod's markers and icons (`markers`), moving a marker (`movemarker`), game prefabs by a part of their name (`prefabs`), game component types by a part of their name with the objects that have them (`types`), the trial caravan (`trial`, `trialloot`, `trialinfo`, `trialclean`, `trialfind`; `StarterTrial.cs`), the stops of all patrol routes (`stops`). |
 
 ## Game model
 
@@ -123,8 +123,9 @@ Observed on a live server (game build with BepInEx 6.0.0-be.733):
     `VBloodUnlockTechBuffer`), belong to `Faction_Legion`, drop `DT_Shared_Legendary_VBlood_GateBoss_Minor/_Major`
     on death, return to where the fight began after 28 / 40 m, and have no lifetime of their own.
 - Not known yet, what `.cvdiag trial` is for (1.0.24): whether a copy of a route patrol (`EntityManager.Instantiate`)
-  spawns a squad and walks; whether it gets into the save (it has no `StoreSubSceneEntity` then; `trialclean` and
-  `trialfind` look for carriage routes without that tag); whether a Blood Soul put in a guard's place walks with
+  spawns a squad and walks; whether it gets into the save (then there are more than the game's 15 carriage routes
+  after a restart: `Routes.Scan` warns once, `trialfind` lists them with their scene tag, `trialclean
+  <index:version>` removes the one named and nothing by guessing); whether a Blood Soul put in a guard's place walks with
   the squad and whom it fights; whether the mod can replace the container's loot before a player opens it.
 - Routes finished while no player was near stay frozen at their last stop (`WaitForDespawn`, no units) until
   something wakes them (dump of 30.10: most caravan patrols were in that state).
@@ -290,8 +291,10 @@ is queued like above; if the whole pass fails it is tried again on the next chec
   errors not written to the log, and how many objects the world holds.
 - `MemoryWatch` samples the game heap and the process every 10 seconds and counts the log lines of the game and
   all plugins (a BepInEx log listener). `MemoryLogic` says when that is an alarm (heap +50 MB in a minute, process
-  +100 MB in 10 s or +300 MB in a minute, 500 log lines in 10 s) and how often a line is written (at once, then
-  every 30 s, 20 per incident, none in the first 5 minutes). The line goes to the log and to
+  +100 MB in 10 s or +300 MB in a minute, 500 log lines in 10 s; the process limits are a guess, what a save
+  costs wasn't measured) and how often a line is written (`MemoryLogic.Budget`: at once, then every 30 s, 20 per
+  incident, which ends after 10 quiet minutes or an hour; the heap has its own budget; none in the first 5 minutes
+  of the world). The line goes to the log and to
   `BepInEx/CarriageTracker-memory.txt`. Why: on 12.11 the server was killed for memory twice with nobody online
   and no caravans (1.0.22 after 13 hours; 1.0.23 two hours after its start: game heap 69 to 1570 MB within 10
   minutes, plugins' heap 78 MB), and the 10-minute line showed only the result. The cause isn't known; nothing

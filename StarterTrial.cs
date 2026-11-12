@@ -35,6 +35,7 @@ static partial class Starter
         public bool HasBoss;
         public PrefabGUID Boss;
         public bool Ally;
+        public bool OwnSquad;               // the copy's unit lists were emptied: what they hold from now on is its own squad
         public readonly HashSet<(int, int)> BossesDone = new();
         public Entity Cart;                 // the cart once seen
         public float3 CartPos;              // where it last was on the map
@@ -48,8 +49,14 @@ static partial class Starter
     static readonly List<(PrefabGUID Item, int Amount, string Name)> TrialLootList = new();
     static readonly List<string> TrialNotes = new();
 
+    // Copies handed to the game's destroy pipeline: until the game has removed them they still aren't routes.
+    static readonly List<Entity> TrialGone = new();
+
     internal static bool HasTrial => _trial != null;
-    public static bool IsTrial(Entity patrol) => _trial != null && _trial.Clone == patrol;
+    public static bool IsTrial(Entity patrol) => (_trial != null && _trial.Clone == patrol) || TrialGone.Contains(patrol);
+
+    // A new server world: the old one's entities mean nothing in it.
+    internal static void TrialReset() { _trial = null; TrialGone.Clear(); }
 
     static void TrialNote(string text)
     {
@@ -122,6 +129,7 @@ static partial class Starter
             int followers = ClearBufferNamed(em, clone, "FollowerBuffer");
             ClearBufferNamed(em, clone, "WaypointTargetBufferEntry");
             if (Routes.ActiveUnits(em, clone).Count > 0) throw new InvalidOperationException("the copy still lists the source's units");
+            trial.OwnSquad = true;
 
             // Its squad appears at the copy, and it waits for a squad.
             object sp = em.GetComponentData<UnitCompositionSpawner>(clone);
@@ -163,7 +171,7 @@ static partial class Starter
             var pos = Caravans.PositionOf(em, clone);
             TrialNote($"copy of {source.Key} patrol {source.Patrol.Index}:{source.Patrol.Version} made: patrol {clone.Index}:{clone.Version} at " +
                       $"({Math.Round(pos.x)}, {Math.Round(pos.z)}), walks {walks}, {squad}; {tag}; " +
-                      $"{listed} units and {Math.Max(0, followers)} followers of the source taken off its lists" +
+                      $"{listed} units and {(followers < 0 ? "no follower list found, so 0" : followers.ToString())} followers of the source taken off its lists" +
                       (own ? "" : "; the source's squad appears somewhere other than at its patrol, left as it is"));
 
             bool started = TryStart(em, new Routes.Route(clone, source.Key), user, out var text);
@@ -411,40 +419,54 @@ static partial class Starter
 
     // ---- removing it ----
 
+    // The game has 15 carriage routes (dumps of 12.11). A copy the game kept in its save is one more.
+    public const int GameRoutes = 15;
+
     // The copy's start is ended, its squad and cart are destroyed, then the copy itself. With no copy known (after
-    // a server restart) it looks for copies the game saved: carriage patrols without the scene tag, while nearly
-    // all others have it.
-    public static List<string> RemoveTrial(EntityManager em)
+    // a server restart, when a copy may have got into the save) nothing is removed by guessing: a patrol is removed
+    // only when the admin names it (leftover, "index:version" from .cvdiag trialfind) and there are more carriage
+    // routes than the game has. A wrong guess here would take a game route out of the save (review of 1.0.24).
+    public static List<string> RemoveTrial(EntityManager em, string leftover = null)
     {
         var said = new List<string>();
         var t = _trial;
         if (t != null)
         {
             _trial = null;
-            said.Add(Destroy(em, t.Clone, t.Cart, $"trial caravan of {t.Key}"));
+            said.Add(Destroy(em, t.Clone, t.Cart, $"trial caravan of {t.Key}", t.OwnSquad));
             return said;
         }
 
         var world = Caravans.ServerWorld();
         var prefabs = world == null ? null : Caravans.Prefabs(world);
-        var tag = Tag("StoreSubSceneEntity");
-        if (prefabs == null || !tag.HasValue) { said.Add("No trial caravan, and leftovers can't be looked for (no scene tag type)."); return said; }
+        if (prefabs == null) { said.Add("No trial caravan; the world isn't ready to look for leftovers."); return said; }
+        Routes.Forget();
         var routes = Routes.All(em, prefabs);
-        var without = routes.FindAll(r => !em.HasComponent(r.Patrol, tag.Value));
-        if (without.Count == 0) { said.Add($"No trial caravan and no leftover copy: all {routes.Count} carriage routes have the scene tag."); return said; }
-        if (without.Count > 2 || routes.Count - without.Count < 10)
+        if (routes.Count <= GameRoutes)
         {
-            said.Add($"{without.Count} of {routes.Count} carriage routes have no scene tag: that doesn't look like leftover copies, nothing removed. See .cvdiag trialfind.");
+            said.Add($"No trial caravan and no leftover copy: {routes.Count} carriage routes, the game has {GameRoutes}.");
             return said;
         }
-        foreach (var r in without) said.Add(Destroy(em, r.Patrol, Entity.Null, $"leftover copy of {r.Key}"));
+        if (string.IsNullOrEmpty(leftover))
+        {
+            said.Add($"No trial caravan in this session, but {routes.Count} carriage routes where the game has {GameRoutes}. Nothing removed. " +
+                     "Run .cvdiag trialfind, find the copy in the file and remove it by its patrol id: .cvdiag trialclean <index:version>");
+            return said;
+        }
+        var named = routes.Find(r => $"{r.Patrol.Index}:{r.Patrol.Version}" == leftover.Trim());
+        if (named == null) { said.Add($"No carriage route with patrol id {leftover}. The ids are in the file of .cvdiag trialfind."); return said; }
+        if (IsRunning(named.Patrol)) { said.Add("That route is being started by the mod right now; nothing removed."); return said; }
+        said.Add(Destroy(em, named.Patrol, Entity.Null, $"leftover copy of {named.Key}", true));
         Routes.Forget();
         return said;
     }
 
-    static string Destroy(EntityManager em, Entity patrol, Entity cart, string what)
+    // withSquad false: the copy alone. Until its unit lists were emptied they hold the source route's living squad.
+    static string Destroy(EntityManager em, Entity patrol, Entity cart, string what, bool withSquad)
     {
         if (!em.Exists(patrol)) return $"The {what} (patrol {patrol.Index}:{patrol.Version}) is gone already.";
+        TrialGone.Add(patrol);
+        if (TrialGone.Count > 8) TrialGone.RemoveAt(0);
         var run = Runs.Find(r => r.Patrol == patrol);
         if (run != null)
         {
@@ -452,13 +474,14 @@ static partial class Starter
             catch (Exception e) { Plugin.Error($"CarriageTracker trial: its start can't be finished: {e.Message}"); }
             Runs.Remove(run);
         }
-        var units = Routes.ActiveUnits(em, patrol);
+        var units = withSquad ? Routes.ActiveUnits(em, patrol) : new List<Entity>();
         var carts = Routes.CartsOf(em, units);
         if (cart != Entity.Null && em.Exists(cart) && !carts.Contains(cart)) carts.Add(cart);
         foreach (var e in carts) DestroyUtility.Destroy(em, e);
         foreach (var e in units) DestroyUtility.Destroy(em, e);
         Doomed.Kill(em, patrol, DateTime.UtcNow);
-        string text = $"The {what} (patrol {patrol.Index}:{patrol.Version}) is removed with {units.Count} units and {carts.Count} carts.";
+        string text = withSquad ? $"The {what} (patrol {patrol.Index}:{patrol.Version}) is removed with {units.Count} units and {carts.Count} carts."
+                                : $"The {what} (patrol {patrol.Index}:{patrol.Version}) is removed alone: its lists still held the source route's squad, which is left as it is.";
         TrialNote(text);
         return text;
     }
@@ -489,7 +512,8 @@ static partial class Starter
                       $"{(tagged ? "scene tag" : "NO scene tag")}{(IsTrial(r.Patrol) ? ", the trial caravan" : "")}, {Routes.Describe(em, r.Patrol)}");
         }
         lines.Insert(0, $"Carriage patrols: {all.Count}, without the scene tag: {without}{(tag.HasValue ? "" : " (the tag type wasn't found)")}. " +
-                        "The game has 15; more, or one without the tag that isn't the trial caravan, is a copy the game kept.");
+                        $"The game has {GameRoutes}; more is a copy the game kept (two patrols with the same key and the same stops; MilitiaCotton has two of its own). " +
+                        "Remove one by its patrol id: .cvdiag trialclean <index:version>");
         return lines;
     }
 
@@ -512,7 +536,8 @@ static partial class Starter
     static int ClearBufferNamed(EntityManager em, Entity e, string name)
     {
         var t = GameTypes.Find(name);
-        if (t == null || !em.HasComponent(e, ComponentType.ReadOnly(Il2CppType.From(t)))) return -1;
+        var ct = Tag(name);
+        if (t == null || !ct.HasValue || !em.HasComponent(e, ct.Value)) return -1;
         object buffer = BufferByType(em, e, t);
         int n = LengthOf(buffer);
         if (n > 0) buffer.GetType().GetMethod("Clear", Type.EmptyTypes).Invoke(buffer, null);
@@ -523,8 +548,8 @@ static partial class Starter
     {
         var t = GameTypes.Find(name);
         if (t == null) throw new InvalidOperationException($"game type {name} not found");
-        var ct = ComponentType.ReadOnly(Il2CppType.From(t));
-        if (!em.HasComponent(from, ct) || !em.HasComponent(to, ct)) throw new InvalidOperationException($"a patrol has no {name}");
+        var ct = Tag(name);
+        if (!ct.HasValue || !em.HasComponent(from, ct.Value) || !em.HasComponent(to, ct.Value)) throw new InvalidOperationException($"a patrol has no {name}");
         object source = BufferByType(em, from, t);
         var get = source.GetType().GetMethod("get_Item");
         var items = new List<object>();

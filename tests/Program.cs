@@ -790,8 +790,9 @@ static class Program
         {
             // 4178 -> 5140 MB in a minute is 160 MB per 10 s.
             True(MemoryLogic.RamJump(new List<long> { 4178, 4338 }), "one step");
-            // Slow growth (1.0.22: 13 hours to 3934 MB) is the 10-minute line's business, and a save's 40 MB too.
-            False(MemoryLogic.RamJump(new List<long> { 3900, 3905, 3910, 3950, 3945, 3940, 3942 }), "a save");
+            // Slow growth (1.0.22: 13 hours to 3934 MB) is the 10-minute line's business. Small ups and downs don't
+            // alarm (made-up numbers: what a save or a login really costs this server hasn't been measured).
+            False(MemoryLogic.RamJump(new List<long> { 3900, 3905, 3910, 3950, 3945, 3940, 3942 }), "small ups and downs");
             True(MemoryLogic.RamJump(new List<long> { 4000, 4060, 4120, 4180, 4240, 4290, 4310 }), "300 MB within the minute");
             // A sample that couldn't be read (0) neither alarms nor is compared with.
             False(MemoryLogic.RamJump(new List<long> { 4000, 0 }), "unread now");
@@ -799,14 +800,30 @@ static class Program
         });
         Test("the watch writes at once, then every 30 s, 20 lines per incident", () =>
         {
-            True(MemoryLogic.Write(0, 0), "first line");
-            False(MemoryLogic.Write(10, 1), "10 s later");
-            True(MemoryLogic.Write(30, 1), "30 s later");
-            False(MemoryLogic.Write(600, MemoryLogic.LinesPerIncident), "the 21st");
-            False(MemoryLogic.IncidentOver(590), "still the same incident");
-            True(MemoryLogic.IncidentOver(600), "10 quiet minutes end it");
+            var b = new MemoryLogic.Budget();
+            True(b.Alarm(1000), "first line");
+            False(b.Alarm(1010), "10 s later");
+            True(b.Alarm(1030), "30 s later");
+            int lines = 2;
+            for (double t = 1040; t < 1900; t += 10) if (b.Alarm(t)) lines++;
+            True(lines == MemoryLogic.LinesPerIncident, $"an alarm at every sample for 15 minutes: {lines} lines");
+            False(b.Alarm(1890 + 590), "590 quiet seconds after the last alarm: still the same incident");
+            True(b.Alarm(1890 + 590 + 600), "10 quiet minutes end it");
             True(MemoryLogic.Flood(500), "50 lines a second");
             False(MemoryLogic.Flood(120), "a busy but normal log");
+        });
+
+        Test("something harmless alarming every 2 minutes for hours doesn't silence the watch", () =>
+        {
+            // Review of 1.0.24: the process alarms every 2 minutes for 3 hours, then the game heap jumps.
+            var other = new MemoryLogic.Budget();
+            var heap = new MemoryLogic.Budget();
+            int lines = 0, lastHour = 0;
+            for (double t = 0; t < 3 * 3600; t += 120)
+                if (other.Alarm(t)) { lines++; if (t >= 2 * 3600) lastHour++; }
+            True(lines <= 3 * MemoryLogic.LinesPerIncident, $"{lines} lines in 3 hours");
+            True(lastHour > 0, "still writing in the third hour");
+            True(heap.Alarm(3 * 3600 + 10), "the heap's own first line");
         });
 
         Console.WriteLine($"{_passed} passed, {_failed} failed");

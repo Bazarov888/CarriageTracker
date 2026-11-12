@@ -19,7 +19,7 @@ public static class MemoryLogic
     public const int FloodLines = 500;
     // The world loads in the first minutes and memory grows fast then.
     public const int QuietAfterStartSeconds = 300;
-    public const int LineEverySeconds = 30, LinesPerIncident = 20, IncidentEndsSeconds = 600;
+    public const int LineEverySeconds = 30, LinesPerIncident = 20, IncidentEndsSeconds = 600, IncidentMaxSeconds = 3600;
 
     // Samples oldest first, the newest last, in MB. A sample that couldn't be read is 0 and never counts.
     public static bool HeapJump(IReadOnlyList<long> mb) => Grew(mb, long.MaxValue, HeapMinuteMb);
@@ -37,10 +37,32 @@ public static class MemoryLogic
 
     public static bool Flood(int logLines) => logLines >= FloodLines;
 
-    // The first line of an incident at once, the next ones no more often than every 30 seconds, 20 in all: the
-    // watch must not add to the trouble it reports.
-    public static bool Write(double secondsSinceLastLine, int linesInIncident) =>
-        linesInIncident < LinesPerIncident && (linesInIncident == 0 || secondsSinceLastLine >= LineEverySeconds);
+    // How many lines an incident may write: the first at once, the next ones no more often than every 30 seconds,
+    // 20 in all, so the watch doesn't add to the trouble it reports. An incident ends after 10 minutes without an
+    // alarm, and after an hour in any case: something harmless that alarms every few minutes for days (a save
+    // that grows the process, a talkative plugin) must not keep the watch silent when the real jump comes. The
+    // game heap has a budget of its own for the same reason (review of 1.0.24).
+    public sealed class Budget
+    {
+        double _first, _lastLine, _lastAlarm;
+        int _lines;
 
-    public static bool IncidentOver(double secondsSinceLastAlarm) => secondsSinceLastAlarm >= IncidentEndsSeconds;
+        public int Lines => _lines;
+
+        // An incident that wrote lines and hasn't ended by the time t (seconds on any steady clock).
+        public bool Open(double t) => _lines > 0 && t - _lastAlarm < IncidentEndsSeconds && t - _first < IncidentMaxSeconds;
+
+        // An alarm at the time t: is a line written for it?
+        public bool Alarm(double t)
+        {
+            if (!Open(t)) _lines = 0;
+            _lastAlarm = t;
+            if (_lines >= LinesPerIncident) return false;
+            if (_lines > 0 && t - _lastLine < LineEverySeconds) return false;
+            if (_lines == 0) _first = t;
+            _lastLine = t;
+            _lines++;
+            return true;
+        }
+    }
 }

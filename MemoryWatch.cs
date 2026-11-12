@@ -17,7 +17,9 @@ sealed class LogCounter : ILogListener
     readonly object _lock = new();
     Dictionary<string, (int Count, int Bad, string First)> _by = new();
 
-    public LogLevel LogLevelFilter => LogLevel.All;
+    // The levels the log file takes anyway. Asking for Debug too would make BepInEx build every plugin's debug
+    // lines, which nobody else listens to.
+    public LogLevel LogLevelFilter => LogLevel.Fatal | LogLevel.Error | LogLevel.Warning | LogLevel.Message | LogLevel.Info;
 
     public void LogEvent(object sender, LogEventArgs e)
     {
@@ -62,10 +64,13 @@ sealed class LogCounter : ILogListener
 // through right away and so survives the server being killed.
 static class MemoryWatch
 {
-    static readonly DateTime Started = DateTime.UtcNow;
-    static DateTime _next = DateTime.UtcNow, _lastLine = DateTime.MinValue, _lastAlarm = DateTime.MinValue, _nextBase = DateTime.MinValue;
+    static readonly DateTime Origin = DateTime.UtcNow;
+    static DateTime _next = DateTime.UtcNow, _nextBase = DateTime.MinValue, _worldSince = DateTime.MinValue;
     static readonly List<long> _heap = new(), _ram = new();
-    static int _lines, _frames;
+    static readonly List<DateTime> _at = new();
+    static readonly MemoryLogic.Budget _heapLines = new(), _otherLines = new();
+    static int _frames;
+    static bool _fileFull;
     static double _workMs, _longestMs;
     static (int All, int Prefab, int Networked) _base;
     static bool _fileFailed;
@@ -107,11 +112,12 @@ static class MemoryWatch
         if (list.Count > MemoryLogic.Kept) list.RemoveAt(0);
     }
 
+    // "previous -> now", and the oldest sample kept with how long ago it really was (a stalling server samples late).
     static string Was(List<long> list)
     {
         int n = list.Count;
         string step = n >= 2 ? $"{list[n - 2]} -> {list[n - 1]}" : $"{list[n - 1]}";
-        return n >= 3 ? $"{step} MB ({(n - 1) * MemoryLogic.SampleSeconds} s ago {list[0]})" : $"{step} MB";
+        return n >= 3 ? $"{step} MB ({Math.Round((_at[n - 1] - _at[0]).TotalSeconds)} s ago {list[0]})" : $"{step} MB";
     }
 
     public static void Tick()
@@ -126,6 +132,8 @@ static class MemoryWatch
         try { using var p = Process.GetCurrentProcess(); ram = p.WorkingSet64 >> 20; } catch { }
         Keep(_heap, heap);
         Keep(_ram, ram);
+        _at.Add(now);
+        if (_at.Count > MemoryLogic.Kept) _at.RemoveAt(0);
         var log = Log?.Take();
         int logLines = 0;
         if (log != null) foreach (var kv in log) logLines += kv.Value.Count;
@@ -133,22 +141,32 @@ static class MemoryWatch
         double workMs = _workMs, longestMs = _longestMs;
         _frames = 0; _workMs = 0; _longestMs = 0;
 
-        if ((now - Started).TotalSeconds < MemoryLogic.QuietAfterStartSeconds) return;
-        bool incident = _lines > 0 && !MemoryLogic.IncidentOver((now - _lastAlarm).TotalSeconds);
-        if (_lines > 0 && !incident) _lines = 0;
-        // What the world normally holds, to compare with: counted every 10 minutes while all is quiet.
-        if (!incident && now >= _nextBase)
+        // Quiet while the world loads: 5 minutes from the first sample that finds the server world.
+        if (_worldSince == DateTime.MinValue)
         {
-            _nextBase = now.AddMinutes(10);
-            try { _base = Objects(); } catch { _base = (-1, -1, -1); }
+            if (Caravans.ServerWorld() == null) return;
+            _worldSince = now;
         }
+        if ((now - _worldSince).TotalSeconds < MemoryLogic.QuietAfterStartSeconds) return;
+        double t = (now - Origin).TotalSeconds;
 
         bool heapJump = MemoryLogic.HeapJump(_heap), ramJump = MemoryLogic.RamJump(_ram), flood = MemoryLogic.Flood(logLines);
-        if (!heapJump && !ramJump && !flood) return;
-        _lastAlarm = now;
-        if (!MemoryLogic.Write((now - _lastLine).TotalSeconds, _lines)) return;
-        _lastLine = now;
-        _lines++;
+        if (!heapJump && !ramJump && !flood)
+        {
+            // What the world normally holds, to compare with: counted every 10 minutes, only at a sample without
+            // an alarm and outside an incident.
+            if (now >= _nextBase && !_heapLines.Open(t) && !_otherLines.Open(t))
+            {
+                _nextBase = now.AddMinutes(10);
+                try { _base = Objects(); } catch { }
+            }
+            return;
+        }
+        // Both budgets are asked, so each counts its own alarm.
+        bool write = heapJump && _heapLines.Alarm(t);
+        if ((ramJump || flood) && _otherLines.Alarm(t)) write = true;
+        if (!write) return;
+        int lineNo = heapJump ? _heapLines.Lines : _otherLines.Lines;
 
         var why = new List<string>();
         if (heapJump) why.Add("game heap grows");
@@ -163,7 +181,7 @@ static class MemoryWatch
         }
         catch (Exception e) { mod = $"unknown ({e.GetType().Name})"; }
         string was = _base.All > 0 ? $" (when quiet: {_base.All}, from prefabs {_base.Prefab}, networked {_base.Networked})" : "";
-        string line = $"CarriageTracker memory watch, line {_lines} of {MemoryLogic.LinesPerIncident} ({string.Join(", ", why)}): " +
+        string line = $"CarriageTracker memory watch, line {lineNo} of {MemoryLogic.LinesPerIncident} ({string.Join(", ", why)}): " +
                       $"game heap {Was(_heap)}, process in RAM {Was(_ram)}, plugins' .NET heap {GC.GetTotalMemory(false) >> 20} MB; " +
                       $"world objects {ObjectsText()}{was}; " +
                       $"log lines in the last {Math.Round(seconds)} s: {LogText(log, logLines)}; " +
@@ -197,7 +215,13 @@ static class MemoryWatch
         {
             string path = Path.Combine(BepInEx.Paths.BepInExRootPath, "CarriageTracker-memory.txt");
             var info = new FileInfo(path);
-            if (info.Exists && info.Length > 1 << 20) return;
+            if (info.Exists && info.Length > 1 << 20)
+            {
+                if (!_fileFull) Plugin.Warn("CarriageTracker memory watch: CarriageTracker-memory.txt is over 1 MB, new lines go to the log only. Delete the file to have them there again.");
+                _fileFull = true;
+                return;
+            }
+            _fileFull = false;
             File.AppendAllText(path, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {line}{Environment.NewLine}");
         }
         catch (Exception e)

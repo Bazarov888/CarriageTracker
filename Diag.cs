@@ -922,12 +922,12 @@ public class DiagCommands
         Say(ctx, Starter.TrialInfo(world.EntityManager));
     }
 
-    [Command("trialclean", adminOnly: true, description: "Removes the trial caravan with its squad; after a server restart, copies the game kept")]
-    public void TrialClean(ChatCommandContext ctx)
+    [Command("trialclean", adminOnly: true, description: "Removes the trial caravan with its squad; with a patrol id from trialfind, a copy the game kept after a restart")]
+    public void TrialClean(ChatCommandContext ctx, string patrol = null)
     {
         var world = Caravans.ServerWorld();
         if (world == null) { ctx.Reply(L.T("world.notready")); return; }
-        Say(ctx, Starter.RemoveTrial(world.EntityManager));
+        Say(ctx, Starter.RemoveTrial(world.EntityManager, patrol));
     }
 
     [Command("trialfind", adminOnly: true, description: "Every carriage patrol and whether it is a game route or a copy, into BepInEx/CarriageTracker-trial.txt")]
