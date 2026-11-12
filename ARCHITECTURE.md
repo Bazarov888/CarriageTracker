@@ -124,13 +124,17 @@ Not verified, treated as assumptions:
   stood at its first stop for 3 s is assumed to avoid it (1.0.10 armed about 4 s after waking every time).
 - Spawner settings changed by the mod are kept in the server save. That is why `RepairLeftovers` runs on the first
   check after the server starts and why `.cv cleanup` exists.
-- The values written back as "normal" (range, respawn timers and modifier) are learned from the carriage routes
-  themselves (`Starter.NormalOf`, `SpawnRange.Learn`): the most common range and the most common timers among the
-  values the mod never writes. The constants in `SpawnRange` (90 m, 1000-2700 s) are used for what no route shows
-  yet (with `Source = Mod` every idle route is blocked, so the range is known once a caravan is out); once both are
-  known they are kept until the server restarts, with one line in the log. Until 1.0.18 the constants were always
-  written (audit of 07.11); from 1.0.19 to 1.0.22 the values were to be read from the route's prefab, but a route
-  patrol has no `PrefabGUID` (dump of 12.11), so the constants were still used every time.
+- The values written back as "normal" (range, respawn timers and modifier) are learned from the game
+  (`Starter.NormalOf`), the same for every carriage route. The range: the most common one among the game's other
+  patrols (`SpawnRange.LearnRange`), which the mod never writes into; the carriage routes can't tell it, as with
+  `Source = Mod` each is blocked while it waits and opened again by the mod with what it takes for normal, and that
+  is kept in the save. This assumes carriage routes have the range of the other patrols: all had 90 m before the
+  mod blocked any, and all 189 other patrols had it on 12.11. The timers: those most carriage routes have
+  (`SpawnRange.LearnTimers`; other patrols have their own). A value counts only if at least two show it and no
+  other is as common. The constants in `SpawnRange` (90 m, 1000-2700 s) stand in until both are learned, which is
+  looked at every 30 s and said once in the log; then they are kept until the server restarts. Until 1.0.18 the
+  constants were always written (audit of 07.11); from 1.0.19 to 1.0.22 the values were to be read from the
+  route's prefab, but a route patrol has no `PrefabGUID` (dump of 12.11), so the constants were still used.
 - A start writes into the route step by step and is tracked only once it is in `Runs`. An error before that
   (`Starter.TryStart`) repairs the route at once (`RepairRoute`; if that fails too, it is queued and retried every
   5 s) and marks it failed, so auto-start skips it for an hour; auto-start counts a start only when it happened.

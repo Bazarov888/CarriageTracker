@@ -519,7 +519,9 @@ public class DiagCommands
 
     static MethodInfo _getBuffer;
 
-    // Elements of a DynamicBuffer whose type is known only at runtime.
+    // Elements of a DynamicBuffer whose type is known only at runtime. GetBuffer<T> is made for that type by
+    // reflection; for a type the game never reads as a buffer itself that can fail, which comes back as an error
+    // text instead of the elements.
     static string ReadBuffer(EntityManager em, PrefabCollectionSystem prefabs, Entity e, Type elemType, int max)
     {
         if (elemType == null) return "";
@@ -676,7 +678,9 @@ public class DiagCommands
         if (prefabs == null) { ctx.Reply(L.T("world.notready")); return; }
         var em = world.EntityManager;
         bool full = mode.Equals("full", StringComparison.OrdinalIgnoreCase);
-        const int fullMax = 60;
+        const int fullMax = 60, listMax = 8000;
+        filter = (filter ?? "").Trim();
+        if (filter.Length < 3) { ctx.Reply("Give at least 3 letters of the name, e.g. .cvdiag prefabs CHAR_"); return; }
 
         var found = new List<(string Name, PrefabGUID Guid)>();
         foreach (var kv in prefabs._PrefabGuidToEntityMap)
@@ -689,7 +693,8 @@ public class DiagCommands
 
         var lines = new List<string> { $"CarriageTracker prefabs \"{filter}\"{(full ? " full" : "")} {DateTime.Now:yyyy-MM-dd HH:mm:ss}: {found.Count}" };
         Refs.Clear();
-        for (int i = 0; i < found.Count; i++)
+        if (found.Count > listMax) lines.Add($"only the first {listMax} are written; give a longer text");
+        for (int i = 0; i < found.Count && i < listMax; i++)
         {
             var (name, guid) = found[i];
             string line = $"{name} {guid.GuidHash}";
@@ -731,7 +736,11 @@ public class DiagCommands
         if (prefabs == null) { ctx.Reply(L.T("world.notready")); return; }
         var em = world.EntityManager;
         max = Math.Clamp(max, 1, 20000);
-        const int typeMax = 60;
+        // The whole file is held in memory and written on the main thread: at most 60 types and 30000 lines of at
+        // most 4000 characters, whatever the text matches.
+        const int typeMax = 60, lineMax = 30000, lineLength = 4000;
+        filter = (filter ?? "").Trim();
+        if (filter.Length < 3) { ctx.Reply("Give at least 3 letters of the type name, e.g. .cvdiag types BusStop"); return; }
 
         var candidates = new List<Type>();
         foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
@@ -755,7 +764,8 @@ public class DiagCommands
         if (candidates.Count > typeMax) lines.Add($"only the first {typeMax} are looked at; give a longer text");
         int components = 0, objects = 0;
         Refs.Clear();
-        for (int c = 0; c < candidates.Count && c < typeMax; c++)
+        bool cut = false;
+        for (int c = 0; c < candidates.Count && c < typeMax && !cut; c++)
         {
             var t = candidates[c];
             ComponentType ct;
@@ -775,7 +785,9 @@ public class DiagCommands
                     .WithOptions(EntityQueryOptions.IncludeDisabled | EntityQueryOptions.IncludePrefab);
                 var query = em.CreateEntityQuery(ref builder);
                 builder.Dispose();
-                var arr = query.ToEntityArray(Allocator.Temp);
+                NativeArray<Entity> arr;
+                try { arr = query.ToEntityArray(Allocator.Temp); }
+                catch { query.Dispose(); throw; }
                 try
                 {
                     components++;
@@ -785,6 +797,7 @@ public class DiagCommands
                     if (arr.Length > 0) lines.Add("  components of the first one: " + string.Join(", ", ComponentNames(em, arr[0])));
                     for (int i = 0; i < arr.Length && i < max; i++)
                     {
+                        if (lines.Count >= lineMax) { cut = true; break; }
                         var e = arr[i];
                         string where = Caravans.Has<LocalToWorld>(em, e) || Caravans.Has<Translation>(em, e)
                             ? $"pos=({Caravans.PositionOf(em, e).x:0.#}, {Caravans.PositionOf(em, e).z:0.#})" : "pos=?";
@@ -796,6 +809,7 @@ public class DiagCommands
                                  : ReadRaw(em, e, ct, t) is object value ? Fields(value, em, prefabs, 0) : "null";
                         }
                         catch (Exception ex) { data = $"<{ex.GetType().Name}: {(ex.Message ?? "").Split('\n')[0]}>"; }
+                        if (data.Length > lineLength) data = data.Substring(0, lineLength) + "...";
                         lines.Add($"  {EntityName(em, prefabs, e)} {where}{flags}{(data.Length > 0 ? ": " + data : "")}");
                     }
                 }
@@ -808,9 +822,11 @@ public class DiagCommands
             catch (Exception ex) { lines.Add($"type {t.FullName}: error {ex.GetType().Name}: {(ex.Message ?? "").Split('\n')[0]}"); }
         }
         Refs.Clear();
+        if (cut) lines.Add($"stopped at {lineMax} lines; give a longer text or fewer objects per type");
 
         string file = $"CarriageTracker-types-{FileSuffix(filter)}.txt";
         System.IO.File.WriteAllLines(System.IO.Path.Combine(BepInEx.Paths.BepInExRootPath, file), lines);
-        ctx.Reply($"Types with \"{filter}\" in the name: {candidates.Count}, of them components: {components}, objects with them: {objects}. File: BepInEx/{file}");
+        ctx.Reply($"Types with \"{filter}\" in the name: {candidates.Count}, of them components: {components}, objects with them: {objects}" +
+                  $"{(cut ? $", stopped at {lineMax} lines" : "")}. File: BepInEx/{file}");
     }
 }

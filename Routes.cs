@@ -26,6 +26,11 @@ static class Routes
     // The routes of the last scan, without scanning (empty before the first one).
     internal static IReadOnlyList<Route> Known => _cache ?? (IReadOnlyList<Route>)Array.Empty<Route>();
 
+    // The game's patrols that aren't carriage routes, of the last scan. The mod never writes into them, so their
+    // spawn range is the game's own (Starter.NormalOf).
+    static List<Entity> _others = new();
+    internal static IReadOnlyList<Entity> OtherPatrols => _others;
+
     // Routes don't change while the server runs, so the list is kept. It is built again every
     // 10 minutes or as soon as one of its patrols no longer exists.
     public static List<Route> All(EntityManager em, PrefabCollectionSystem prefabs)
@@ -42,6 +47,7 @@ static class Routes
     static List<Route> Scan(EntityManager em, PrefabCollectionSystem prefabs)
     {
         var result = new List<Route>();
+        var others = new List<Entity>();
         var query = Queries.Get(em, "GlobalPatrolState+UnitCompositionSpawner all", true, Ct<GlobalPatrolState>.RO, Ct<UnitCompositionSpawner>.RO);
         var patrols = query.ToEntityArray(Allocator.Temp);
         try
@@ -50,6 +56,7 @@ static class Routes
             {
                 if (!em.HasBuffer<UnitCompositionGroupUnitEntry>(p)) continue;
                 var units = em.GetBuffer<UnitCompositionGroupUnitEntry>(p);
+                bool carriage = false;
                 for (int i = 0; i < units.Length; i++)
                 {
                     object unit = units[i].Unit;
@@ -57,14 +64,17 @@ static class Routes
                     const string prefix = "CHAR_CarriageHorse_";
                     if (name == null || !name.StartsWith(prefix, StringComparison.Ordinal)) continue;
                     result.Add(new Route(p, name.Substring(prefix.Length)));
+                    carriage = true;
                     break;
                 }
+                if (!carriage) others.Add(p);
             }
         }
         finally
         {
             patrols.Dispose();
         }
+        _others = others;
         // By key, and two patrols of one key west first: the query's order changes when freeze tags come and go, and
         // until 1.0.22 the two MilitiaCotton patrols could swap their numbers between .cv routes and .cv start
         // (review of 11.11).
