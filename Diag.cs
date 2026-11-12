@@ -829,4 +829,236 @@ public class DiagCommands
         ctx.Reply($"Types with \"{filter}\" in the name: {candidates.Count}, of them components: {components}, objects with them: {objects}" +
                   $"{(cut ? $", stopped at {lineMax} lines" : "")}. File: BepInEx/{file}");
     }
+
+    // ---- trial caravan and the stops of patrol routes (the mod's own caravans, 12.11) ----
+
+    static void Say(ChatCommandContext ctx, IEnumerable<string> lines)
+    {
+        foreach (var line in lines) ctx.Reply(line.Length > 450 ? line.Substring(0, 450) + "..." : line);
+    }
+
+    // A prefab by its number, its exact name or a part of its name that only one prefab has.
+    static bool FindPrefab(PrefabCollectionSystem prefabs, string text, out PrefabGUID guid, out string name, out string problem)
+    {
+        guid = default;
+        name = null;
+        problem = null;
+        if (int.TryParse(text, out int number))
+        {
+            guid = new PrefabGUID(number);
+            if (prefabs._PrefabGuidToEntityMap.TryGetValue(guid, out _) && prefabs._PrefabLookupMap.TryGetName(guid, out name)) return true;
+            problem = $"No prefab has the number {number}.";
+            return false;
+        }
+        var some = new List<(string Name, PrefabGUID Guid)>();
+        foreach (var kv in prefabs._PrefabGuidToEntityMap)
+        {
+            if (!prefabs._PrefabLookupMap.TryGetName(kv.Key, out string n) || string.IsNullOrEmpty(n)) continue;
+            if (n.Equals(text, StringComparison.OrdinalIgnoreCase)) { guid = kv.Key; name = n; return true; }
+            if (n.IndexOf(text, StringComparison.OrdinalIgnoreCase) >= 0) some.Add((n, kv.Key));
+        }
+        if (some.Count == 1) { guid = some[0].Guid; name = some[0].Name; return true; }
+        some.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
+        problem = some.Count == 0 ? $"No prefab has \"{text}\" in its name."
+            : $"{some.Count} prefabs have \"{text}\" in their name, give the whole name: " +
+              string.Join(", ", some.GetRange(0, Math.Min(6, some.Count)).ConvertAll(x => x.Name)) + (some.Count > 6 ? ", ..." : "");
+        return false;
+    }
+
+    [Command("trial", adminOnly: true, usage: "<route number> [boss prefab or -] [ally,elite,stops=<route number>,keeptag]",
+             description: "A trial caravan: a copy of the route's patrol, started at once. Boss: a unit in place of the first guard. Options, comma-separated: ally (the boss gets the animal's team), trash/normal/elite/boss (its stats), stops=N (walk route N's stops), keeptag")]
+    public void Trial(ChatCommandContext ctx, int route, string boss = "-", string options = "")
+    {
+        var world = Caravans.ServerWorld();
+        var prefabs = world == null ? null : Caravans.Prefabs(world);
+        if (prefabs == null) { ctx.Reply(L.T("world.notready")); return; }
+        var em = world.EntityManager;
+        var routes = Routes.All(em, prefabs);
+        if (route < 1 || route > routes.Count) { ctx.Reply($"Route numbers are 1 to {routes.Count}, see .cv routes"); return; }
+
+        PrefabGUID? bossGuid = null;
+        if (boss != "-" && boss.Length > 0)
+        {
+            if (!FindPrefab(prefabs, boss, out var guid, out string bossName, out string problem)) { ctx.Reply(problem); return; }
+            if (!bossName.StartsWith("CHAR_", StringComparison.Ordinal)) { ctx.Reply($"{bossName} isn't a unit (CHAR_...)."); return; }
+            bossGuid = guid;
+        }
+
+        bool ally = false, keepTag = false;
+        string stats = "";
+        Routes.Route stopsFrom = null;
+        foreach (string raw in options.Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            string o = raw.Trim().ToLowerInvariant();
+            if (o == "ally") ally = true;
+            else if (o == "keeptag") keepTag = true;
+            else if (o == "trash" || o == "normal" || o == "elite" || o == "boss") stats = o;
+            else if (o.StartsWith("stops=", StringComparison.Ordinal) && int.TryParse(o.Substring(6), out int n) && n >= 1 && n <= routes.Count && n != route)
+                stopsFrom = routes[n - 1];
+            else { ctx.Reply($"Unknown option \"{raw}\". Options: ally, trash, normal, elite, boss, stops=<another route's number>, keeptag"); return; }
+        }
+        if (bossGuid == null && (ally || stats.Length > 0)) { ctx.Reply("ally and the stats are for a boss; give its prefab."); return; }
+
+        Say(ctx, Starter.MakeTrial(em, prefabs, routes[route - 1], ctx.Event.SenderUserEntity, bossGuid, stats, ally, stopsFrom, keepTag));
+    }
+
+    [Command("trialloot", adminOnly: true, usage: "<item prefab or clear> [amount]", description: "What the trial caravan's container gets instead of the game's loot; several items by several commands, clear = the game's loot stays")]
+    public void TrialLoot(ChatCommandContext ctx, string item, int amount = 1)
+    {
+        if (item.Equals("clear", StringComparison.OrdinalIgnoreCase)) { ctx.Reply(Starter.TrialLootClear()); return; }
+        var world = Caravans.ServerWorld();
+        var prefabs = world == null ? null : Caravans.Prefabs(world);
+        if (prefabs == null) { ctx.Reply(L.T("world.notready")); return; }
+        if (!FindPrefab(prefabs, item, out var guid, out string name, out string problem)) { ctx.Reply(problem); return; }
+        if (!name.StartsWith("Item_", StringComparison.Ordinal)) { ctx.Reply($"{name} isn't an item (Item_...)."); return; }
+        ctx.Reply($"{amount} x {name}. " + Starter.TrialLoot(guid, amount, name));
+    }
+
+    [Command("trialinfo", adminOnly: true, description: "The trial caravan and what happened to it")]
+    public void TrialInfo(ChatCommandContext ctx)
+    {
+        var world = Caravans.ServerWorld();
+        if (world == null) { ctx.Reply(L.T("world.notready")); return; }
+        Say(ctx, Starter.TrialInfo(world.EntityManager));
+    }
+
+    [Command("trialclean", adminOnly: true, description: "Removes the trial caravan with its squad; after a server restart, copies the game kept")]
+    public void TrialClean(ChatCommandContext ctx)
+    {
+        var world = Caravans.ServerWorld();
+        if (world == null) { ctx.Reply(L.T("world.notready")); return; }
+        Say(ctx, Starter.RemoveTrial(world.EntityManager));
+    }
+
+    [Command("trialfind", adminOnly: true, description: "Every carriage patrol and whether it is a game route or a copy, into BepInEx/CarriageTracker-trial.txt")]
+    public void TrialFind(ChatCommandContext ctx)
+    {
+        var world = Caravans.ServerWorld();
+        var prefabs = world == null ? null : Caravans.Prefabs(world);
+        if (prefabs == null) { ctx.Reply(L.T("world.notready")); return; }
+        var lines = Starter.TrialFind(world.EntityManager, prefabs);
+        lines.Insert(0, $"CarriageTracker trial {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        lines.AddRange(Starter.TrialInfo(world.EntityManager));
+        System.IO.File.WriteAllLines(System.IO.Path.Combine(BepInEx.Paths.BepInExRootPath, "CarriageTracker-trial.txt"), lines);
+        ctx.Reply(lines[1]);
+        ctx.Reply("File: BepInEx/CarriageTracker-trial.txt");
+    }
+
+    sealed class StopSeen
+    {
+        public int ChunkX, ChunkZ;
+        public bool Exact;
+        public float X, Z;
+        public string How;
+        public readonly List<string> Users = new();
+    }
+
+    static readonly System.Text.RegularExpressions.Regex StopPattern =
+        new(@"Chunk=(-?\d+),\s*(-?\d+), BusStopGuid=([0-9a-fA-F\-]+)", System.Text.RegularExpressions.RegexOptions.Compiled);
+    static readonly System.Text.RegularExpressions.Regex PositionPattern =
+        new(@"Position=\((-?[\d.]+), -?[\d.]+, (-?[\d.]+)\)", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    // Every stop of every patrol route: its chunk and that chunk's square on the map (StopLogic.Cell), who walks it,
+    // and its exact place where a patrol shows it now: a patrol waiting at its last stop stands on it, and the last
+    // point of a moving patrol's path is taken for the stop it heads for if it lies inside that stop's square (the
+    // file says how often it does, which tells whether that guess holds).
+    [Command("stops", adminOnly: true, description: "Every stop of every patrol route with its place on the map, into BepInEx/CarriageTracker-stops.txt")]
+    public void Stops(ChatCommandContext ctx)
+    {
+        var world = Caravans.ServerWorld();
+        var prefabs = world == null ? null : Caravans.Prefabs(world);
+        if (prefabs == null) { ctx.Reply(L.T("world.notready")); return; }
+        var em = world.EntityManager;
+        var stopT = ManagedBySimpleName("PatrolBusStopNode");
+        var wayT = ManagedBySimpleName("WaypointTargetBufferEntry");
+        if (stopT == null) { ctx.Reply("Game type PatrolBusStopNode not found."); return; }
+
+        var routeNames = new Dictionary<(int, int), string>();
+        foreach (var r in Routes.All(em, prefabs)) routeNames[(r.Patrol.Index, r.Patrol.Version)] = r.Key + (r.Side != null ? "-" + r.Side : "");
+
+        var stops = new Dictionary<string, StopSeen>();
+        int patrolCount = 0, standing = 0, standingInside = 0, heading = 0, headingInside = 0;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var query = Queries.Get(em, "GlobalPatrolState+UnitCompositionSpawner all", true, Ct<GlobalPatrolState>.RO, Ct<UnitCompositionSpawner>.RO);
+        var patrols = query.ToEntityArray(Allocator.Temp);
+        Refs.Clear();
+        try
+        {
+            foreach (var p in patrols)
+            {
+                var found = StopPattern.Matches(ReadBuffer(em, prefabs, p, stopT, 200));
+                if (found.Count == 0) continue;
+                patrolCount++;
+                string who = routeNames.TryGetValue((p.Index, p.Version), out string rn) ? rn : $"patrol {p.Index}:{p.Version}";
+                var mine = new List<StopSeen>();
+                for (int i = 0; i < found.Count; i++)
+                {
+                    string id = found[i].Groups[3].Value;
+                    if (!stops.TryGetValue(id, out var stop))
+                        stops[id] = stop = new StopSeen { ChunkX = int.Parse(found[i].Groups[1].Value, inv), ChunkZ = int.Parse(found[i].Groups[2].Value, inv) };
+                    stop.Users.Add($"{who}#{i}");
+                    mine.Add(stop);
+                }
+
+                object gp = em.GetComponentData<GlobalPatrolState>(p);
+                int current = Caravans.Field(gp, "CurrentBusStopIndex") is IConvertible c ? Convert.ToInt32(c) : -1;
+                int target = Caravans.Field(gp, "TargetBusStopIndex") is IConvertible t ? Convert.ToInt32(t) : -1;
+                var pos = Caravans.PositionOf(em, p);
+                if (Routes.MoveStatus(em, p) == "WaitForDespawn" && current >= 0 && current < mine.Count)
+                {
+                    standing++;
+                    var stop = mine[current];
+                    if (StopLogic.InCell(stop.ChunkX, stop.ChunkZ, pos.x, pos.z))
+                    {
+                        standingInside++;
+                        stop.Exact = true; stop.X = pos.x; stop.Z = pos.z; stop.How = $"{who} stands on it";
+                    }
+                }
+                else if (wayT != null && target >= 0 && target < mine.Count)
+                {
+                    var points = PositionPattern.Matches(ReadBuffer(em, prefabs, p, wayT, 400));
+                    if (points.Count == 0) continue;
+                    var last = points[points.Count - 1];
+                    if (!float.TryParse(last.Groups[1].Value, System.Globalization.NumberStyles.Float, inv, out float x) ||
+                        !float.TryParse(last.Groups[2].Value, System.Globalization.NumberStyles.Float, inv, out float z)) continue;
+                    heading++;
+                    var stop = mine[target];
+                    if (!StopLogic.InCell(stop.ChunkX, stop.ChunkZ, x, z)) continue;
+                    headingInside++;
+                    if (!stop.Exact) { stop.Exact = true; stop.X = x; stop.Z = z; stop.How = $"end of the path of {who}"; }
+                }
+            }
+        }
+        finally
+        {
+            patrols.Dispose();
+            Refs.Clear();
+        }
+
+        var ids = new List<string>(stops.Keys);
+        ids.Sort((a, b) =>
+        {
+            int byX = stops[a].ChunkX.CompareTo(stops[b].ChunkX);
+            if (byX != 0) return byX;
+            int byZ = stops[a].ChunkZ.CompareTo(stops[b].ChunkZ);
+            return byZ != 0 ? byZ : string.CompareOrdinal(a, b);
+        });
+        int exact = 0;
+        var lines = new List<string>();
+        foreach (string id in ids)
+        {
+            var stop = stops[id];
+            if (stop.Exact) exact++;
+            var (x0, z0) = StopLogic.Cell(stop.ChunkX, stop.ChunkZ);
+            lines.Add($"{id} chunk {stop.ChunkX},{stop.ChunkZ} square x {x0:0}..{x0 + StopLogic.CellSize:0} z {z0:0}..{z0 + StopLogic.CellSize:0} " +
+                      (stop.Exact ? string.Format(inv, "at ({0:0.#}, {1:0.#}) ({2})", stop.X, stop.Z, stop.How) : "place within the square unknown") +
+                      " | " + string.Join(", ", stop.Users));
+        }
+        lines.Insert(0, $"CarriageTracker stops {DateTime.Now:yyyy-MM-dd HH:mm:ss}: {stops.Count} stops of {patrolCount} patrols, exact place known for {exact}");
+        lines.Insert(1, $"patrols waiting at their last stop: {standing}, of them inside that stop's square: {standingInside}");
+        lines.Insert(2, $"moving patrols with a path: {heading}, of them with the path's end inside the square of the stop they head for: {headingInside}");
+        lines.Insert(3, "");
+        System.IO.File.WriteAllLines(System.IO.Path.Combine(BepInEx.Paths.BepInExRootPath, "CarriageTracker-stops.txt"), lines);
+        ctx.Reply($"Stops: {stops.Count} of {patrolCount} patrols, exact place known for {exact}. File: BepInEx/CarriageTracker-stops.txt");
+    }
 }

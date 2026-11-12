@@ -480,7 +480,7 @@ static class Memory
         catch (Exception e) { game = $"unknown ({e.GetType().Name})"; }
         var doomed = Doomed.Counts(now);
         Plugin.Info($"CarriageTracker memory: {process}; game heap {game}, plugins' .NET heap {GC.GetTotalMemory(false) >> 20} MB; " +
-                    $"mod: caravans {Tracker.Current.Count}, starts {Starter.RunCount}; " +
+                    $"world objects {MemoryWatch.ObjectsText()}; mod: caravans {Tracker.Current.Count}, starts {Starter.RunCount}; " +
                     $"icons on caravans {Icons.Live} of {Icons.InWorld} (made {Icons.Made - _iconsMade}, removed {Icons.Dropped - _iconsDropped}{Why(Icons.DroppedBy, _iconsBy)}); " +
                     $"markers the mod's {Proxies.Live} of {Proxies.InWorld} (made {Proxies.Made - _markersMade}, removed {Proxies.Dropped - _markersDropped}{Why(Proxies.DroppedBy, _markersBy)}; " +
                     $"stale icons removed {Proxies.Orphans - _orphans}); " +

@@ -62,12 +62,16 @@ Good remarks not done yet. Add new ones here with the date and where they came f
 - A5, audit 07.11: pass the language to `L.T` as a parameter instead of the ambient `L.Current`.
 - A2, audit 07.11: find an unambiguous mark for the mod's markers (a value in a saved component) so `Owned`
   needs no heuristics.
+- Memory, 12.11: the server was killed for memory twice with nobody online (1.0.22 after 13 h, 1.0.23 after 2 h;
+  1.0.21 ran 23 h clean). Cause unknown; ARCHITECTURE.md, Tracking and icons. To decide it: the `memory watch`
+  lines and `BepInEx/CarriageTracker-memory.txt` of 1.0.24, the owner's per-minute memory log and a day on 1.0.21.
+  Don't call it fixed before a cause is shown.
 - Own caravans, asked by the owner 12.11: a profile per caravan (drop set whole by the profile, guards including
   the rift bosses "Lesser / Primal Blood Soul" as plain strong enemies, its own schedule apart from auto-start:
   hours, days, per day) and, if the game allows, its own route. Known so far: ARCHITECTURE.md, Game model, dumps
-  of 12.11. Still to find out with `.cvdiag prefabs` and `.cvdiag types BusStop`: the Blood Soul prefabs, where the
-  road nodes are, what the loot container's drop table is. Whether a copy of a patrol works (and whether it gets
-  into the save) is to be tried only after that, when the owner says so. Design first, with the owner.
+  of 12.11. Next: the owner tries `.cvdiag trial`, `trialloot`, `stops` of 1.0.24 on the server (does a patrol
+  copy walk and get into the save, does a Blood Soul walk with the squad, can loot be replaced); nothing in
+  `StarterTrial.cs` has run in game yet. Then the design of profiles, with the owner, before any code.
 - Dump of 12.11: `Script_RespawnCarriageUponLost_Data` on the animal (720 s). Check on the server whether an animal
   that lost its cart gets a new one; if it does, `RunLogic` (cart lost, `LoopCartLost`) and auto-start limits
   must know.

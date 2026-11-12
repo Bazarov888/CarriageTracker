@@ -177,6 +177,7 @@ At the first check after the server starts, the mod checks every game field it r
 - The game has no carriage map icon, and a server mod can't send new pictures to players, so the icon is one of the game's own. Pick one with `.cv icon`.
 - A route carries one carriage at a time. When the cart is destroyed, the animal and what is left of the squad walk on to the end of the route; until then that route is busy.
 - A started carriage keeps going if everybody logs off (the mod looks after it up to `MaxRunMinutes`) and is removed at the end of its route, as usual.
+- Every 10 minutes the mod writes a `CarriageTracker memory:` line to the server log. If memory jumps or the log floods in between, it writes a `CarriageTracker memory watch` line at once, also to `BepInEx/CarriageTracker-memory.txt`. It only reports what it sees.
 - An Oakveil carriage that nobody robs keeps circling, as in the base game, and its route stays busy until it is destroyed.
 
 ## Uninstalling

@@ -748,6 +748,67 @@ static class Program
             Eq(DoomStep.Wait, DoomLogic.Step(TimeSpan.FromHours(5), true, true), "given up: nothing more");
         });
 
+        // --- 1.0.24: stops of patrol routes and the squad of a trial caravan (dumps of 12.11)
+        Test("a stop's chunk tells its 160 m square on the map", () =>
+        {
+            // 12.11: ChurchLegion's patrol at its last stop (chunk 8,16) stood at (-1811, -552); BanditCopper's (chunk 13,11) at (-1041, -1355).
+            True(StopLogic.InCell(8, 16, -1811f, -552f), "ChurchLegion");
+            True(StopLogic.InCell(13, 11, -1041f, -1355f), "BanditCopper");
+            var (x, z) = StopLogic.Cell(8, 16);
+            True(x == -1920f && z == -640f, "corner of chunk 8,16");
+            // A moving patrol at (-1047, -1529) isn't at its stop in chunk 15,11.
+            True(!StopLogic.InCell(15, 11, -1047f, -1529f), "elsewhere");
+        });
+        Test("a trial's boss replaces the first guard of every group, never the animal", () =>
+        {
+            // 12.11, militia and bandit routes: 3 groups of 8, the animal first in each.
+            var animal = new List<bool>();
+            for (int i = 0; i < 24; i++) animal.Add(i % 8 == 0);
+            var slots = StopLogic.GuardSlots(new List<(int, int)> { (0, 8), (8, 8), (16, 8) }, animal);
+            True(slots.Count == 3 && slots[0] == 1 && slots[1] == 9 && slots[2] == 17, "three groups");
+            // The animal anywhere in the group; a group of the animal alone and one past the list give no place.
+            slots = StopLogic.GuardSlots(new List<(int, int)> { (0, 2), (2, 1), (3, 8) }, new List<bool> { false, true, true });
+            True(slots.Count == 1 && slots[0] == 0, "odd groups");
+        });
+
+        // --- Memory watch (12.11: two kills for memory on an empty server)
+        Test("the game heap that went from 69 to 1570 MB in 10 minutes is caught within the first minute", () =>
+        {
+            // Hours of normal work: 66-69 MB.
+            False(MemoryLogic.HeapJump(new List<long> { 66, 67, 69, 68, 66, 69, 69 }), "normal heap");
+            // The slowest way to 1570 MB in 10 minutes is evenly, 25 MB per 10 s.
+            var heap = new List<long> { 69 };
+            int samples = 0;
+            for (long mb = 94; !MemoryLogic.HeapJump(heap) && samples < 60; mb += 25, samples++)
+            {
+                heap.Add(mb);
+                if (heap.Count > MemoryLogic.Kept) heap.RemoveAt(0);
+            }
+            True(samples <= 3, $"caught after {samples} samples");
+        });
+        Test("the process that grew from 4.08 to 5.02 to 7.49 GiB minute by minute is caught at the first sample", () =>
+        {
+            // 4178 -> 5140 MB in a minute is 160 MB per 10 s.
+            True(MemoryLogic.RamJump(new List<long> { 4178, 4338 }), "one step");
+            // Slow growth (1.0.22: 13 hours to 3934 MB) is the 10-minute line's business, and a save's 40 MB too.
+            False(MemoryLogic.RamJump(new List<long> { 3900, 3905, 3910, 3950, 3945, 3940, 3942 }), "a save");
+            True(MemoryLogic.RamJump(new List<long> { 4000, 4060, 4120, 4180, 4240, 4290, 4310 }), "300 MB within the minute");
+            // A sample that couldn't be read (0) neither alarms nor is compared with.
+            False(MemoryLogic.RamJump(new List<long> { 4000, 0 }), "unread now");
+            False(MemoryLogic.RamJump(new List<long> { 0, 4000 }), "unread before");
+        });
+        Test("the watch writes at once, then every 30 s, 20 lines per incident", () =>
+        {
+            True(MemoryLogic.Write(0, 0), "first line");
+            False(MemoryLogic.Write(10, 1), "10 s later");
+            True(MemoryLogic.Write(30, 1), "30 s later");
+            False(MemoryLogic.Write(600, MemoryLogic.LinesPerIncident), "the 21st");
+            False(MemoryLogic.IncidentOver(590), "still the same incident");
+            True(MemoryLogic.IncidentOver(600), "10 quiet minutes end it");
+            True(MemoryLogic.Flood(500), "50 lines a second");
+            False(MemoryLogic.Flood(120), "a busy but normal log");
+        });
+
         Console.WriteLine($"{_passed} passed, {_failed} failed");
         return _failed == 0 ? 0 : 1;
     }

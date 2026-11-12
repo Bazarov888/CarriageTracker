@@ -23,6 +23,9 @@ static class Routes
     static List<Route> _cache;
     static DateTime _cacheAt;
 
+    // The next All() searches the routes again.
+    internal static void Forget() => _cache = null;
+
     // The routes of the last scan, without scanning (empty before the first one).
     internal static IReadOnlyList<Route> Known => _cache ?? (IReadOnlyList<Route>)Array.Empty<Route>();
 
@@ -54,6 +57,8 @@ static class Routes
         {
             foreach (var p in patrols)
             {
+                // A trial caravan's patrol (.cvdiag trial) is a copy of a route, never a route of the mod.
+                if (Starter.IsTrial(p)) continue;
                 if (!em.HasBuffer<UnitCompositionGroupUnitEntry>(p)) continue;
                 var units = em.GetBuffer<UnitCompositionGroupUnitEntry>(p);
                 bool carriage = false;
