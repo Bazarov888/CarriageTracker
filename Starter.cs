@@ -45,7 +45,8 @@ static partial class Starter
     static readonly List<Run> Runs = new();
     static readonly string[] TimingFields = { "RespawnTimeModifier", "MinRespawnTime", "MaxRespawnTime" };
 
-    public static bool Any => Runs.Count > 0;
+    // A trial caravan (.cvdiag trial) is looked at once a second for as long as it exists, its start over or not.
+    public static bool Any => Runs.Count > 0 || _trial != null;
     internal static int RunCount => Runs.Count;
     public static bool IsRunning(Entity patrol) => Runs.Exists(r => r.Patrol == patrol);
 
@@ -392,6 +393,7 @@ static partial class Starter
         if (em.Exists(run.Patrol))
         {
             BlockIfWaiting(em, run.Patrol);
+            BlockTrial(em, run.Patrol);
             AddTag(em, run.Patrol, "DisableWhenNoPlayersInRange");
             var units = Routes.ActiveUnits(em, run.Patrol);
             var rest = new List<Entity>(units);
@@ -473,6 +475,12 @@ static partial class Starter
                     Runs.RemoveAt(i);
                 }
             }
+        }
+
+        if (_trial != null)
+        {
+            try { TrialSweep(world, em, prefabs, now); }
+            catch (Exception e) { Plugin.Fail("trial", e); }
         }
     }
 

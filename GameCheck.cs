@@ -59,6 +59,37 @@ static class GameCheck
             Plugin.Info("CarriageTracker: game check passed, every game field and type the mod uses is there");
     }
 
+    // What a trial caravan (.cvdiag trial, Starter.MakeTrial) reads and writes by name on top of the above. Checked
+    // when one is asked for: a developer tool must not turn anything off for everyone or add to the start-up lines.
+    public static List<string> TrialMissing(bool boss, bool stops)
+    {
+        var missing = new List<string>();
+        Field(typeof(UnitCompositionSpawner), "PositionSource", typeof(Entity), missing);
+        EnumValue(typeof(UnitCompositionSpawner), "SpawnerState", "WaitingForSpawn", missing);
+        Field(typeof(GlobalPatrolState), "PathRequestEntity", typeof(Entity), missing);
+        if (boss)
+        {
+            Field(typeof(UnitCompositionGroupUnitEntry), "Unit", typeof(PrefabGUID), missing);
+            Field(typeof(UnitCompositionGroupUnitEntry), "IsVBloodUnit", typeof(bool), missing);
+            var stats = typeof(UnitCompositionGroupUnitEntry).GetField("UnitBaseStatsType");
+            if (stats == null || !stats.FieldType.IsEnum) missing.Add("UnitCompositionGroupUnitEntry.UnitBaseStatsType");
+        }
+        if (stops)
+        {
+            foreach (var f in new[] { "StartBusStopIndex", "CurrentBusStopIndex", "TargetBusStopIndex" })
+                Field(typeof(GlobalPatrolState), f, null, missing, numeric: true);
+            EnumValue(typeof(MovePatrolState), "Status", "WaitingForPath", missing);
+            TypeByName("PatrolBusStopNode", missing);
+        }
+        return missing;
+    }
+
+    static void EnumValue(Type type, string name, string value, List<string> missing)
+    {
+        var f = type.GetField(name);
+        if (f == null || !f.FieldType.IsEnum || !Enum.IsDefined(f.FieldType, value)) missing.Add($"{type.Name}.{name}.{value}");
+    }
+
     static void Field(Type type, string name, Type expected, List<string> missing, bool numeric = false)
     {
         var f = type.GetField(name);

@@ -78,6 +78,9 @@ public class Plugin : BasePlugin
         Settings.Bind(Config);
         try { _harmony = Harmony.CreateAndPatchAll(typeof(MapIconSpawnPatch), MyPluginInfo.PLUGIN_GUID); }
         catch (Exception e) { Log.LogError($"CarriageTracker: Harmony patch failed, proxy icons become global only on the next check: {e}"); }
+        // The memory watch counts the log lines of the game and of every plugin (MemoryWatch).
+        try { BepInEx.Logging.Logger.Listeners.Add(MemoryWatch.Log = new LogCounter()); }
+        catch (Exception e) { MemoryWatch.Log = null; Log.LogWarning($"CarriageTracker: the memory watch can't count log lines: {e.Message}"); }
         _ticker = AddComponent<Ticker>();
         CommandRegistry.Middlewares.Add(_language = new LanguageMiddleware());
         CommandRegistry.RegisterCommandType(typeof(Commands));
@@ -130,6 +133,8 @@ public class Plugin : BasePlugin
         }
         catch (Exception e) { Log.LogError($"CarriageTracker unloading: can't give the world back its settings: {e}"); }
         if (_ticker != null) UnityEngine.Object.Destroy(_ticker);
+        try { if (MemoryWatch.Log != null) BepInEx.Logging.Logger.Listeners.Remove(MemoryWatch.Log); } catch { }
+        MemoryWatch.Log = null;
         CommandRegistry.UnregisterAssembly();
         if (_language != null) CommandRegistry.Middlewares.Remove(_language);
         _harmony?.UnpatchSelf();
@@ -150,6 +155,13 @@ public class Ticker : UnityEngine.MonoBehaviour
     public void Update()
     {
         if (Stopped) return;
+        long began = System.Diagnostics.Stopwatch.GetTimestamp();
+        Work();
+        MemoryWatch.Frame((System.Diagnostics.Stopwatch.GetTimestamp() - began) * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
+    }
+
+    static void Work()
+    {
         // Background work speaks the server's default language (a command that failed midway could leave
         // its player's language set).
         L.UseDefault();
@@ -164,6 +176,8 @@ public class Ticker : UnityEngine.MonoBehaviour
         }
         try { Memory.Tick(); }
         catch (Exception e) { Plugin.Fail("CarriageTracker memory", e); }
+        try { MemoryWatch.Tick(); }
+        catch (Exception e) { Plugin.Fail("CarriageTracker memory watch", e); }
         var now = DateTime.UtcNow;
         if (now >= _next)
         {

@@ -748,6 +748,84 @@ static class Program
             Eq(DoomStep.Wait, DoomLogic.Step(TimeSpan.FromHours(5), true, true), "given up: nothing more");
         });
 
+        // --- 1.0.24: stops of patrol routes and the squad of a trial caravan (dumps of 12.11)
+        Test("a stop's chunk tells its 160 m square on the map", () =>
+        {
+            // 12.11: ChurchLegion's patrol at its last stop (chunk 8,16) stood at (-1811, -552); BanditCopper's (chunk 13,11) at (-1041, -1355).
+            True(StopLogic.InCell(8, 16, -1811f, -552f), "ChurchLegion");
+            True(StopLogic.InCell(13, 11, -1041f, -1355f), "BanditCopper");
+            var (x, z) = StopLogic.Cell(8, 16);
+            True(x == -1920f && z == -640f, "corner of chunk 8,16");
+            // A moving patrol at (-1047, -1529) isn't at its stop in chunk 15,11.
+            True(!StopLogic.InCell(15, 11, -1047f, -1529f), "elsewhere");
+        });
+        Test("a trial's boss replaces the first guard of every group, never the animal", () =>
+        {
+            // 12.11, militia and bandit routes: 3 groups of 8, the animal first in each.
+            var animal = new List<bool>();
+            for (int i = 0; i < 24; i++) animal.Add(i % 8 == 0);
+            var slots = StopLogic.GuardSlots(new List<(int, int)> { (0, 8), (8, 8), (16, 8) }, animal);
+            True(slots.Count == 3 && slots[0] == 1 && slots[1] == 9 && slots[2] == 17, "three groups");
+            // The animal anywhere in the group; a group of the animal alone and one past the list give no place.
+            slots = StopLogic.GuardSlots(new List<(int, int)> { (0, 2), (2, 1), (3, 8) }, new List<bool> { false, true, true });
+            True(slots.Count == 1 && slots[0] == 0, "odd groups");
+        });
+
+        // --- Memory watch (12.11: two kills for memory on an empty server)
+        Test("the game heap that went from 69 to 1570 MB in 10 minutes is caught within the first minute", () =>
+        {
+            // Hours of normal work: 66-69 MB.
+            False(MemoryLogic.HeapJump(new List<long> { 66, 67, 69, 68, 66, 69, 69 }), "normal heap");
+            // The slowest way to 1570 MB in 10 minutes is evenly, 25 MB per 10 s.
+            var heap = new List<long> { 69 };
+            int samples = 0;
+            for (long mb = 94; !MemoryLogic.HeapJump(heap) && samples < 60; mb += 25, samples++)
+            {
+                heap.Add(mb);
+                if (heap.Count > MemoryLogic.Kept) heap.RemoveAt(0);
+            }
+            True(samples <= 3, $"caught after {samples} samples");
+        });
+        Test("the process that grew from 4.08 to 5.02 to 7.49 GiB minute by minute is caught at the first sample", () =>
+        {
+            // 4178 -> 5140 MB in a minute is 160 MB per 10 s.
+            True(MemoryLogic.RamJump(new List<long> { 4178, 4338 }), "one step");
+            // Slow growth (1.0.22: 13 hours to 3934 MB) is the 10-minute line's business. Small ups and downs don't
+            // alarm (made-up numbers: what a save or a login really costs this server hasn't been measured).
+            False(MemoryLogic.RamJump(new List<long> { 3900, 3905, 3910, 3950, 3945, 3940, 3942 }), "small ups and downs");
+            True(MemoryLogic.RamJump(new List<long> { 4000, 4060, 4120, 4180, 4240, 4290, 4310 }), "300 MB within the minute");
+            // A sample that couldn't be read (0) neither alarms nor is compared with.
+            False(MemoryLogic.RamJump(new List<long> { 4000, 0 }), "unread now");
+            False(MemoryLogic.RamJump(new List<long> { 0, 4000 }), "unread before");
+        });
+        Test("the watch writes at once, then every 30 s, 20 lines per incident", () =>
+        {
+            var b = new MemoryLogic.Budget();
+            True(b.Alarm(1000), "first line");
+            False(b.Alarm(1010), "10 s later");
+            True(b.Alarm(1030), "30 s later");
+            int lines = 2;
+            for (double t = 1040; t < 1900; t += 10) if (b.Alarm(t)) lines++;
+            True(lines == MemoryLogic.LinesPerIncident, $"an alarm at every sample for 15 minutes: {lines} lines");
+            False(b.Alarm(1890 + 590), "590 quiet seconds after the last alarm: still the same incident");
+            True(b.Alarm(1890 + 590 + 600), "10 quiet minutes end it");
+            True(MemoryLogic.Flood(500), "50 lines a second");
+            False(MemoryLogic.Flood(120), "a busy but normal log");
+        });
+
+        Test("something harmless alarming every 2 minutes for hours doesn't silence the watch", () =>
+        {
+            // Review of 1.0.24: the process alarms every 2 minutes for 3 hours, then the game heap jumps.
+            var other = new MemoryLogic.Budget();
+            var heap = new MemoryLogic.Budget();
+            int lines = 0, lastHour = 0;
+            for (double t = 0; t < 3 * 3600; t += 120)
+                if (other.Alarm(t)) { lines++; if (t >= 2 * 3600) lastHour++; }
+            True(lines <= 3 * MemoryLogic.LinesPerIncident, $"{lines} lines in 3 hours");
+            True(lastHour > 0, "still writing in the third hour");
+            True(heap.Alarm(3 * 3600 + 10), "the heap's own first line");
+        });
+
         Console.WriteLine($"{_passed} passed, {_failed} failed");
         return _failed == 0 ? 0 : 1;
     }

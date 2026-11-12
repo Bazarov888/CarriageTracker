@@ -42,13 +42,15 @@ A change of behaviour starts with a test case.
 | `Starter.cs` | A forced start of one route and looking after it until it ends. |
 | `StarterSource.cs` | `Source = Mod`: keeping the game from spawning caravans by itself. |
 | `StarterRepair.cs` | Giving routes the game's settings back after a crash, and `.cv cleanup`; each route's normal values (`NormalOf`). |
+| `StarterTrial.cs` | Developer only (`.cvdiag trial`): one trial caravan made as a copy of a route's patrol, with a strong guard, other stops and replaced loot, and its full removal. |
+| `MemoryWatch.cs` | Memory sampled every 10 seconds; a line at once when it jumps or the log floods (`Logic/MemoryLogic.cs`); counting of everybody's log lines. |
 | `GameCheck.cs` | Once per server start: are all game fields and types the mod uses by name there. |
 | `StarterAnimal.cs` | The caravan's animal: its state in the log, mortal again once its cart is lost; leftover spawn buffs removed from the squad. |
 | `Acts.cs` | Act of a player (by V Blood drunk or by level, `PlayerAct`) and of a route (by its region, `RouteActs`, or guard level for an unknown route). |
 | `Commands.cs` | Chat commands (VampireCommandFramework). |
 | `Loc.cs` | Chat texts in English and Russian; `L` answers in the language in use for the current player. Texts made at a check and read later (`Caravan.Note`, `Tracker.LastStats`, `AutoStart.LastResults`, start replies) are `LateText`, put into words when read, in the reader's language. |
 | `Languages.cs` | Each player's own language (`BepInEx/config/CarriageTracker.languages.txt`, kept by `LanguageStore`) and the VCF middleware that switches to it for every command of this mod. |
-| `Diag.cs` | Developer commands `.cvdiag`, registered only with `EnableDiagnostics = true`: components of a caravan object, objects nearby, dumps of carts and patrols, the mod's markers and icons (`markers`), moving a marker (`movemarker`), game prefabs by a part of their name (`prefabs`), game component types by a part of their name with the objects that have them (`types`). |
+| `Diag.cs` | Developer commands `.cvdiag`, registered only with `EnableDiagnostics = true`: components of a caravan object, objects nearby, dumps of carts and patrols, the mod's markers and icons (`markers`), moving a marker (`movemarker`), game prefabs by a part of their name (`prefabs`), game component types by a part of their name with the objects that have them (`types`), the trial caravan (`trial`, `trialloot`, `trialinfo`, `trialclean`, `trialfind`; `StarterTrial.cs`), the stops of all patrol routes (`stops`). |
 
 ## Game model
 
@@ -103,6 +105,28 @@ Observed on a live server (game build with BepInEx 6.0.0-be.733):
     spawners: 64 unit entries have `IsVBloodUnit = true`.
   - The animal has `Script_RespawnCarriageUponLost_Data` (`RespawnTimer = 720`). By its name the game gives an
     animal that lost its cart a new one after 12 minutes; not seen in game, and the mod doesn't count on it.
+- From the dumps of 12.11, second round (`.cvdiag prefabs`, `.cvdiag types`):
+  - The chunk of a stop tells where it is to within a square of 160 m: the corner is at `chunk * 160 - 3200` on both
+    axes (`StopLogic.Cell`; all 12 patrols standing at their last stop stood inside that stop's square). The exact
+    places of road nodes are in `ChunkRoadGraph` blobs on the 248 terrain chunk objects, not in components; the mod
+    doesn't read them. 311 different stops are used by all patrols.
+  - A patrol has 8 places in its formation (`FormationOffsetBuffer`); the animal is the first unit of each group.
+    A unit entry also carries `UnitBaseStatsType` (Trash, Normal, Elite, Boss) and `CustomVBloodUnit`.
+  - The spawner's `PositionSource` is the patrol itself. The animal spawns its cart and driver as minions.
+  - The cart spawns its loot container when destroyed (`SpawnPrefabOnGameplayEvent`, `TM_CarriageContainer_<route>`).
+    Four carts have no container and release prisoners instead (`TM_CarriagePrisonerRelease_*`: BanditPrisoners,
+    BanditAnimal, ChurchLegion, ChurchMutants). The container fills its 21 slots when it appears, from two drop
+    tables (`DT_Shared_Treasure_Carriage_T0x_<faction>` and `DT_Carriage_T0x_<resource>`; rows are a rate, an item
+    or a group, a quantity).
+  - Blood Souls (rift bosses): `CHAR_*_GateBoss_Minor` (level 57, 10 of them) and `CHAR_*_GateBoss_Major` (level
+    85, 12). They have `VBloodUnit` but nothing that unlocks progress (`VBloodConsumeSource`,
+    `VBloodUnlockTechBuffer`), belong to `Faction_Legion`, drop `DT_Shared_Legendary_VBlood_GateBoss_Minor/_Major`
+    on death, return to where the fight began after 28 / 40 m, and have no lifetime of their own.
+- Not known yet, what `.cvdiag trial` is for (1.0.24): whether a copy of a route patrol (`EntityManager.Instantiate`)
+  spawns a squad and walks; whether it gets into the save (then there are more than the game's 15 carriage routes
+  after a restart: `Routes.Scan` warns once, `trialfind` lists them with their scene tag, `trialclean
+  <index:version>` removes the one named and nothing by guessing); whether a Blood Soul put in a guard's place walks with
+  the squad and whom it fights; whether the mod can replace the container's loot before a player opens it.
 - Routes finished while no player was near stay frozen at their last stop (`WaitForDespawn`, no units) until
   something wakes them (dump of 30.10: most caravan patrols were in that state).
 
@@ -264,7 +288,17 @@ is queued like above; if the whole pass fails it is tried again on the next chec
   marker no longer exists are removed (`Proxies.SweepOrphans`).
 - Every 10 minutes `Memory` writes the process's memory, the game and plugin heaps, the mod's icons and markers
   (how many exist, how many were made and removed, and why), the objects waiting to be destroyed and the repeated
-  errors not written to the log.
+  errors not written to the log, and how many objects the world holds.
+- `MemoryWatch` samples the game heap and the process every 10 seconds and counts the log lines of the game and
+  all plugins (a BepInEx log listener). `MemoryLogic` says when that is an alarm (heap +50 MB in a minute, process
+  +100 MB in 10 s or +300 MB in a minute, 500 log lines in 10 s; the process limits are a guess, what a save
+  costs wasn't measured) and how often a line is written (`MemoryLogic.Budget`: at once, then every 30 s, 20 per
+  incident, which ends after 10 quiet minutes or an hour; the heap has its own budget; none in the first 5 minutes
+  of the world). The line goes to the log and to
+  `BepInEx/CarriageTracker-memory.txt`. Why: on 12.11 the server was killed for memory twice with nobody online
+  and no caravans (1.0.22 after 13 hours; 1.0.23 two hours after its start: game heap 69 to 1570 MB within 10
+  minutes, plugins' heap 78 MB), and the 10-minute line showed only the result. The cause isn't known; nothing
+  timer-driven in 1.0.22 and 1.0.23 was found to loop or allocate without bound.
 - The server world, its prefab system, component types (`Ct<T>`) and the queries of every check (`Queries`) are made
   once and kept while the world exists (audit 07.11).
 - New markers' icons are made global as soon as the game creates them (`MapIconSpawnPatch`), each marker once;

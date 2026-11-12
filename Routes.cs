@@ -23,6 +23,9 @@ static class Routes
     static List<Route> _cache;
     static DateTime _cacheAt;
 
+    // The next All() searches the routes again.
+    internal static void Forget() => _cache = null;
+
     // The routes of the last scan, without scanning (empty before the first one).
     internal static IReadOnlyList<Route> Known => _cache ?? (IReadOnlyList<Route>)Array.Empty<Route>();
 
@@ -44,6 +47,8 @@ static class Routes
         return new List<Route>(_cache);
     }
 
+    static bool _warnedExtra;
+
     static List<Route> Scan(EntityManager em, PrefabCollectionSystem prefabs)
     {
         var result = new List<Route>();
@@ -54,6 +59,8 @@ static class Routes
         {
             foreach (var p in patrols)
             {
+                // A trial caravan's patrol (.cvdiag trial) is a copy of a route, never a route of the mod.
+                if (Starter.IsTrial(p)) continue;
                 if (!em.HasBuffer<UnitCompositionGroupUnitEntry>(p)) continue;
                 var units = em.GetBuffer<UnitCompositionGroupUnitEntry>(p);
                 bool carriage = false;
@@ -75,6 +82,12 @@ static class Routes
             patrols.Dispose();
         }
         _others = others;
+        if (result.Count > Starter.GameRoutes && !_warnedExtra)
+        {
+            _warnedExtra = true;
+            Plugin.Warn($"CarriageTracker: {result.Count} carriage routes where the game has {Starter.GameRoutes}. If .cvdiag trial was used, " +
+                        "the game may have kept a copy: .cvdiag trialfind shows them, .cvdiag trialclean <index:version> removes one.");
+        }
         // By key, and two patrols of one key west first: the query's order changes when freeze tags come and go, and
         // until 1.0.22 the two MilitiaCotton patrols could swap their numbers between .cv routes and .cv start
         // (review of 11.11).
