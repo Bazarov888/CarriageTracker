@@ -409,6 +409,9 @@ public class DiagCommands
                 if (!all && !IsInteresting(shortName)) continue;
                 var managed = ManagedByFullName(fullName);
                 if (managed == null || !managed.IsValueType) { lines.Add($"  {shortName}: (unreadable)"); continue; }
+                // A buffer is read element by element. Until 1.0.22 its header was read as if it were one element, which
+                // gave made-up values (the patrol's stops and squad in the dump of 12.11).
+                if (ct.IsBuffer) { lines.Add($"  {shortName}: {ReadBuffer(em, prefabs, e, managed, 16)}"); continue; }
                 if (managed.GetFields(BindingFlags.Public | BindingFlags.Instance).Length == 0) { lines.Add($"  {shortName}: (tag without data)"); continue; }
                 try
                 {
@@ -587,7 +590,7 @@ public class DiagCommands
                 states[state] = states.TryGetValue(state, out var n) ? n + 1 : 1;
                 var pos = Caravans.PositionOf(em, e);
                 string name = nameT == null ? "" : (ReadComp(em, e, nameT) is object dn ? Fields(dn, em, prefabs, 0) : "");
-                string units = ReadBuffer(em, prefabs, e, unitT, 12);
+                string units = ReadBuffer(em, prefabs, e, unitT, 40);
                 bool isPatrol = patrolT != null && ReadComp(em, e, patrolT) != null;
                 string head = $"{e.Index}:{e.Version} pos=({pos.x:0}, {pos.z:0}) onMap={Caravans.OnMap(pos)} disabled={Caravans.Has<Disabled>(em, e)} state={state} name={name}";
                 if (!isPatrol)
@@ -601,8 +604,8 @@ public class DiagCommands
                 patrolLines.Add("");
                 patrolLines.Add($"== PATROL{(carriage ? " CARRIAGE" : "")} " + head);
                 patrolLines.Add("  units: " + units);
-                patrolLines.Add("  groups: " + ReadBuffer(em, prefabs, e, groupT, 6));
-                patrolLines.Add("  active: " + ReadBuffer(em, prefabs, e, activeT, 6));
+                patrolLines.Add("  groups: " + ReadBuffer(em, prefabs, e, groupT, 10));
+                patrolLines.Add("  active: " + ReadBuffer(em, prefabs, e, activeT, 30));
                 patrolLines.Add("  busStops: " + ReadBuffer(em, prefabs, e, busT, 30));
                 patrolLines.Add("  GlobalPatrolState: " + Fields(ReadComp(em, e, patrolT), em, prefabs, 0));
                 if (ReadComp(em, e, moveT) is object mv) patrolLines.Add("  MovePatrolState: " + Fields(mv, em, prefabs, 0));
@@ -625,5 +628,189 @@ public class DiagCommands
         lines.AddRange(otherLines);
         System.IO.File.WriteAllLines(System.IO.Path.Combine(BepInEx.Paths.BepInExRootPath, "CarriageTracker-patrols.txt"), lines);
         ctx.Reply($"Spawners: {total}, patrols: {patrols}, with carts: {carriagePatrols}. File: BepInEx/CarriageTracker-patrols.txt");
+    }
+
+    // ---- prefabs and types: looking for game objects by a part of their name (custom caravans, 12.11) ----
+
+    // Components that tell what a unit or object is, shown next to each prefab.
+    static readonly string[] PrefabMarks = { "VBlood", "Boss", "Soul", "Shard", "Incursion", "Rift", "Gate", "DropTable", "Consume", "Unlock" };
+
+    static List<string> ComponentNames(EntityManager em, Entity e)
+    {
+        var names = new List<string>();
+        var types = em.GetComponentTypes(e);
+        try
+        {
+            for (int i = 0; i < types.Length; i++)
+            {
+                var il2 = TypeManager.GetType(types[i].TypeIndex);
+                names.Add(il2 == null ? "?" : il2.Name);
+            }
+        }
+        finally
+        {
+            types.Dispose();
+        }
+        names.Sort(StringComparer.Ordinal);
+        return names;
+    }
+
+    // A part of a file name made of the letters, digits and _ of the text.
+    static string FileSuffix(string text)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (char c in text ?? "")
+            if (char.IsLetterOrDigit(c) || c == '_') sb.Append(c);
+        string s = sb.ToString();
+        return s.Length == 0 ? "all" : s.Length > 30 ? s.Substring(0, 30) : s;
+    }
+
+    // Every game prefab whose name contains the text, with its number, its level if it is a unit and the components
+    // that tell what it is (PrefabMarks). With "full" the first 60 are written with all their data, buffers included
+    // (drop tables, squads).
+    [Command("prefabs", adminOnly: true, usage: "<part of the name> [full]", description: "Game prefabs whose name contains the text, into BepInEx/CarriageTracker-prefabs-<text>.txt; full = with all their data")]
+    public void PrefabList(ChatCommandContext ctx, string filter, string mode = "")
+    {
+        var world = Caravans.ServerWorld();
+        var prefabs = world == null ? null : Caravans.Prefabs(world);
+        if (prefabs == null) { ctx.Reply(L.T("world.notready")); return; }
+        var em = world.EntityManager;
+        bool full = mode.Equals("full", StringComparison.OrdinalIgnoreCase);
+        const int fullMax = 60;
+
+        var found = new List<(string Name, PrefabGUID Guid)>();
+        foreach (var kv in prefabs._PrefabGuidToEntityMap)
+        {
+            if (!prefabs._PrefabLookupMap.TryGetName(kv.Key, out string name) || string.IsNullOrEmpty(name)) continue;
+            if (name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0) continue;
+            found.Add((name, kv.Key));
+        }
+        found.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
+
+        var lines = new List<string> { $"CarriageTracker prefabs \"{filter}\"{(full ? " full" : "")} {DateTime.Now:yyyy-MM-dd HH:mm:ss}: {found.Count}" };
+        Refs.Clear();
+        for (int i = 0; i < found.Count; i++)
+        {
+            var (name, guid) = found[i];
+            string line = $"{name} {guid.GuidHash}";
+            Entity prefab = Entity.Null;
+            try
+            {
+                if (prefabs._PrefabGuidToEntityMap.TryGetValue(guid, out prefab) && em.Exists(prefab))
+                {
+                    int level = Acts.LevelOf(em, prefabs, guid);
+                    if (level > 0) line += $" level={level}";
+                    var marks = ComponentNames(em, prefab).FindAll(n => Array.Exists(PrefabMarks, m => n.IndexOf(m, StringComparison.OrdinalIgnoreCase) >= 0));
+                    if (marks.Count > 0) line += " [" + string.Join(", ", marks) + "]";
+                }
+                else prefab = Entity.Null;
+            }
+            catch (Exception ex) { line += $" <{ex.GetType().Name}>"; }
+            lines.Add(line);
+            if (!full || i >= fullMax || prefab == Entity.Null) continue;
+            try { DumpEntity(em, prefabs, prefab, lines, true); }
+            catch (Exception ex) { lines.Add($"  <{ex.GetType().Name}: {(ex.Message ?? "").Split('\n')[0]}>"); }
+            lines.Add("");
+        }
+        Refs.Clear();
+
+        string file = $"CarriageTracker-prefabs-{FileSuffix(filter)}.txt";
+        System.IO.File.WriteAllLines(System.IO.Path.Combine(BepInEx.Paths.BepInExRootPath, file), lines);
+        ctx.Reply($"Prefabs with \"{filter}\" in the name: {found.Count}{(full && found.Count > fullMax ? $", the first {fullMax} in full" : "")}. File: BepInEx/{file}");
+        for (int i = 0; i < found.Count && i < 10; i++) ctx.Reply($"{found[i].Name} ({found[i].Guid.GuidHash})");
+    }
+
+    // Every game component type whose name contains the text: how many objects have it, and for the first of them
+    // where they are and what it holds. For finding out how a part of the game is built when only a name is known:
+    // "BusStop" for the stops of patrol routes and where they are on the map.
+    [Command("types", adminOnly: true, usage: "<part of the type name> [objects per type]", description: "Game component types whose name contains the text and the objects that have them, into BepInEx/CarriageTracker-types-<text>.txt")]
+    public void TypeList(ChatCommandContext ctx, string filter, int max = 3000)
+    {
+        var world = Caravans.ServerWorld();
+        var prefabs = world == null ? null : Caravans.Prefabs(world);
+        if (prefabs == null) { ctx.Reply(L.T("world.notready")); return; }
+        var em = world.EntityManager;
+        max = Math.Clamp(max, 1, 20000);
+        const int typeMax = 60;
+
+        var candidates = new List<Type>();
+        foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            string asmName = asm.GetName().Name ?? "";
+            if (!asmName.StartsWith("ProjectM", StringComparison.Ordinal) && !asmName.StartsWith("Stunlock", StringComparison.Ordinal)) continue;
+            Type[] types;
+            try { types = asm.GetTypes(); }
+            catch (ReflectionTypeLoadException e) { types = e.Types; }
+            catch { continue; }
+            foreach (var t in types)
+            {
+                if (t == null || !t.IsValueType || t.IsEnum || t.IsGenericType || t.IsGenericTypeDefinition) continue;
+                if (t.Name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                candidates.Add(t);
+            }
+        }
+        candidates.Sort((a, b) => string.CompareOrdinal(a.FullName, b.FullName));
+
+        var lines = new List<string> { $"CarriageTracker types \"{filter}\" {DateTime.Now:yyyy-MM-dd HH:mm:ss}: {candidates.Count} types with the text in their name" };
+        if (candidates.Count > typeMax) lines.Add($"only the first {typeMax} are looked at; give a longer text");
+        int components = 0, objects = 0;
+        Refs.Clear();
+        for (int c = 0; c < candidates.Count && c < typeMax; c++)
+        {
+            var t = candidates[c];
+            ComponentType ct;
+            try
+            {
+                ct = ComponentType.ReadOnly(Il2CppType.From(t));
+                // A type the game hasn't registered as a component has no type index: it is never put into a query.
+                if (ct.TypeIndex.Equals(default(ComponentType).TypeIndex)) { lines.Add($"type {t.FullName}: not a component"); continue; }
+            }
+            catch { lines.Add($"type {t.FullName}: not a component"); continue; }
+            try
+            {
+                bool buffer = ct.IsBuffer;
+                bool tag = !buffer && t.GetFields(BindingFlags.Public | BindingFlags.Instance).Length == 0;
+                var builder = new EntityQueryBuilder(Allocator.Temp)
+                    .AddAll(ct)
+                    .WithOptions(EntityQueryOptions.IncludeDisabled | EntityQueryOptions.IncludePrefab);
+                var query = em.CreateEntityQuery(ref builder);
+                builder.Dispose();
+                var arr = query.ToEntityArray(Allocator.Temp);
+                try
+                {
+                    components++;
+                    objects += arr.Length;
+                    lines.Add("");
+                    lines.Add($"== type {t.FullName}: {(buffer ? "buffer" : tag ? "tag" : "component")}, {arr.Length} objects{(arr.Length > max ? $", the first {max} below" : "")}");
+                    if (arr.Length > 0) lines.Add("  components of the first one: " + string.Join(", ", ComponentNames(em, arr[0])));
+                    for (int i = 0; i < arr.Length && i < max; i++)
+                    {
+                        var e = arr[i];
+                        string where = Caravans.Has<LocalToWorld>(em, e) || Caravans.Has<Translation>(em, e)
+                            ? $"pos=({Caravans.PositionOf(em, e).x:0.#}, {Caravans.PositionOf(em, e).z:0.#})" : "pos=?";
+                        string flags = (Caravans.Has<Unity.Entities.Prefab>(em, e) ? " prefab" : "") + (Caravans.Has<Disabled>(em, e) ? " disabled" : "");
+                        string data;
+                        try
+                        {
+                            data = tag ? "" : buffer ? ReadBuffer(em, prefabs, e, t, 30)
+                                 : ReadRaw(em, e, ct, t) is object value ? Fields(value, em, prefabs, 0) : "null";
+                        }
+                        catch (Exception ex) { data = $"<{ex.GetType().Name}: {(ex.Message ?? "").Split('\n')[0]}>"; }
+                        lines.Add($"  {EntityName(em, prefabs, e)} {where}{flags}{(data.Length > 0 ? ": " + data : "")}");
+                    }
+                }
+                finally
+                {
+                    arr.Dispose();
+                    query.Dispose();
+                }
+            }
+            catch (Exception ex) { lines.Add($"type {t.FullName}: error {ex.GetType().Name}: {(ex.Message ?? "").Split('\n')[0]}"); }
+        }
+        Refs.Clear();
+
+        string file = $"CarriageTracker-types-{FileSuffix(filter)}.txt";
+        System.IO.File.WriteAllLines(System.IO.Path.Combine(BepInEx.Paths.BepInExRootPath, file), lines);
+        ctx.Reply($"Types with \"{filter}\" in the name: {candidates.Count}, of them components: {components}, objects with them: {objects}. File: BepInEx/{file}");
     }
 }

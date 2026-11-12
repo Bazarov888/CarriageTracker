@@ -62,6 +62,15 @@ Good remarks not done yet. Add new ones here with the date and where they came f
 - A5, audit 07.11: pass the language to `L.T` as a parameter instead of the ambient `L.Current`.
 - A2, audit 07.11: find an unambiguous mark for the mod's markers (a value in a saved component) so `Owned`
   needs no heuristics.
+- Own caravans, asked by the owner 12.11: a profile per caravan (drop set whole by the profile, guards including
+  the rift bosses "Lesser / Primal Blood Soul" as plain strong enemies, its own schedule apart from auto-start:
+  hours, days, per day) and, if the game allows, its own route. Known so far: ARCHITECTURE.md, Game model, dumps
+  of 12.11. Still to find out with `.cvdiag prefabs` and `.cvdiag types BusStop`: the Blood Soul prefabs, where the
+  road nodes are, what the loot container's drop table is. Whether a copy of a patrol works (and whether it gets
+  into the save) is to be tried only after that, when the owner says so. Design first, with the owner.
+- Dump of 12.11: `Script_RespawnCarriageUponLost_Data` on the animal (720 s). Check on the server whether an animal
+  that lost its cart gets a new one; if it does, `RunLogic` (cart lost, `LoopCartLost`) and auto-start limits
+  must know.
 - Repository: NuGet lock file and Dependabot (GitHub Actions are already pinned by SHA).
 - Review of 1.0.21: the count of a repeated error that stops is only in the memory-line total, not per error.
 - Review of 1.0.21: `.cvdiag movemarker` on a frozen caravan's marker less than 100 m away leaves it at the admin's

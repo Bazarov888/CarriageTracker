@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.23
+
+Tools for finding out how the game builds routes and squads (for the mod's own caravans later), and one fix found with them. Nothing changes for players.
+
+- The values the mod writes back as a route's normal ones (spawn range, respawn timers) are now learned from the carriage routes themselves: the most common values among routes the mod hasn't changed. Since 1.0.19 they were meant to come from the route's prefab, but a route has no prefab (patrol dump of 12.11), so the mod's constants (90 m, 1000-2700 s) were used every time without a word in the log. The constants are still used until the routes show both values; one log line says what was learned.
+- `.cvdiag dump` reads buffers element by element. Before, a buffer (a patrol's stops, squad and groups) was read as one value and the file showed made-up numbers for it.
+- `.cvdiag patrols` writes whole squads (up to 40 units, 10 groups, 30 active units; before 12, 6 and 6).
+- New developer commands (`EnableDiagnostics = true`): `.cvdiag prefabs <text> [full]` writes every game prefab whose name contains the text, with its number, unit level and the components that tell what it is; with `full` the first 60 with all their data (drop tables, squads). `.cvdiag types <text> [objects per type]` writes every game component type whose name contains the text, how many objects have it and, for each object, where it is and what the component holds (`BusStop`: the stops of patrol routes).
+
 ## 1.0.22
 
 Fixes from a code review of 11.11.

@@ -1,12 +1,14 @@
+using System.Collections.Generic;
+
 namespace CarriageTracker;
 
 // Values the mod writes into a route's UnitCompositionSpawner, and when.
 // PlayerRange (x, y): the game spawns the squad only for a player within y meters of the patrol point.
 public static class SpawnRange
 {
-    // The game's own range, seen on every route of a live server. The mod reads each route's normal values from
-    // the route's prefab (Starter.NormalOf) and uses these only when the prefab's values are missing or odd
-    // (SaneRange, SaneTimers), so a game update that changes them doesn't get the old ones written back.
+    // The game's own range, seen on every route of a live server. The mod learns the normal values from the routes
+    // themselves (Learn, Starter.NormalOf) and uses these only until it has, so a game update that changes them
+    // doesn't get the old ones written back.
     public const float NormalY = 90f;
     // Source = Mod: nobody stands within 1 mm of a patrol point, so the game doesn't spawn. Kept above 0
     // on purpose, in case the game takes 0 for "no limit".
@@ -52,4 +54,34 @@ public static class SpawnRange
 
     // A start sets both respawn timers to 0; the game's own are never 0.
     public static bool TimersZero(double min, double max) => min == 0 && max == 0;
+
+    // A route's spawner values as they are now.
+    public readonly record struct Seen(float RangeY, double Modifier, double Min, double Max);
+
+    // The normal values of carriage routes, learned from the routes themselves: the most common range and the most
+    // common respawn timers among the values that can be the game's own (SaneRange, SaneTimers, a modifier above 0).
+    // What the mod writes never counts: a blocked or zero range, a start's range, a start's zero timers. null for
+    // what no route shows now (with Source = Mod every idle route is blocked, so the range is known only once a
+    // caravan is out). A route patrol has no prefab to read them from (patrol dump of 12.11: no PrefabGUID).
+    public static (float? RangeY, (double Modifier, double Min, double Max)? Timers) Learn(IEnumerable<Seen> routes)
+    {
+        var ranges = new Dictionary<float, int>();
+        var timers = new Dictionary<(double, double, double), int>();
+        foreach (var r in routes)
+        {
+            if (SaneRange(r.RangeY)) ranges[r.RangeY] = (ranges.TryGetValue(r.RangeY, out int n) ? n : 0) + 1;
+            if (SaneTimers(r.Min, r.Max) && r.Modifier > 0)
+            {
+                var key = (r.Modifier, r.Min, r.Max);
+                timers[key] = (timers.TryGetValue(key, out int m) ? m : 0) + 1;
+            }
+        }
+        float? range = null;
+        int best = 0;
+        foreach (var kv in ranges) if (kv.Value > best) { best = kv.Value; range = kv.Key; }
+        (double, double, double)? timer = null;
+        best = 0;
+        foreach (var kv in timers) if (kv.Value > best) { best = kv.Value; timer = kv.Key; }
+        return (range, timer);
+    }
 }

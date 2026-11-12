@@ -539,7 +539,7 @@ static class Program
             Eq(120f, SpawnRange.RestoreY(0, SpawnRange.BlockedY, 120f));
             Eq(75f, SpawnRange.RestoreY(0, 75f, 120f));
         });
-        Test("a prefab's odd values aren't taken for normal ones", () =>
+        Test("odd values aren't taken for normal ones", () =>
         {
             True(SpawnRange.SaneRange(90f), "90 m is a normal range");
             True(!SpawnRange.SaneRange(0f), "0 is not");
@@ -549,6 +549,39 @@ static class Program
             True(SpawnRange.SaneTimers(1000, 2700), "the game's timers");
             True(!SpawnRange.SaneTimers(0, 0), "a start's zero timers");
             True(!SpawnRange.SaneTimers(2700, 1000), "min above max");
+        });
+
+        // --- 1.0.23: a route patrol has no prefab (patrol dump of 12.11); normal values come from the routes
+        Test("normal values are learned from the routes, never from what the mod wrote", () =>
+        {
+            // 12.11, Source = Mod: 12 idle routes blocked, 3 with a caravan out at the game's 90 m; all with the game's timers.
+            var routes = new List<SpawnRange.Seen>();
+            for (int i = 0; i < 12; i++) routes.Add(new SpawnRange.Seen(SpawnRange.BlockedY, 1, 1000, 2700));
+            for (int i = 0; i < 3; i++) routes.Add(new SpawnRange.Seen(90f, 1, 1000, 2700));
+            var (y, t) = SpawnRange.Learn(routes);
+            Eq<float?>(90f, y, "range");
+            True(t.HasValue && t.Value.Modifier == 1 && t.Value.Min == 1000 && t.Value.Max == 2700, "timers");
+        });
+        Test("every route blocked: the range isn't known yet, the timers are", () =>
+        {
+            var routes = new List<SpawnRange.Seen> { new(SpawnRange.BlockedY, 1, 1000, 2700), new(0f, 1, 1000, 2700) };
+            var (y, t) = SpawnRange.Learn(routes);
+            Eq<float?>(null, y, "range");
+            True(t.HasValue, "timers");
+        });
+        Test("a route in the middle of a start teaches nothing", () =>
+        {
+            var routes = new List<SpawnRange.Seen> { new(SpawnRange.StartY, 0, 0, 0), new(float.NaN, double.NaN, double.NaN, double.NaN) };
+            var (y, t) = SpawnRange.Learn(routes);
+            Eq<float?>(null, y, "range");
+            True(!t.HasValue, "timers");
+        });
+        Test("after a game update the routes' own values win over the mod's constants", () =>
+        {
+            var routes = new List<SpawnRange.Seen> { new(120f, 2, 600, 1800), new(120f, 2, 600, 1800), new(SpawnRange.StartY, 0, 0, 0) };
+            var (y, t) = SpawnRange.Learn(routes);
+            Eq<float?>(120f, y, "range");
+            True(t.HasValue && t.Value.Modifier == 2 && t.Value.Min == 600 && t.Value.Max == 1800, "timers");
         });
 
         // --- 1.0.19: chat messages fit FixedString512Bytes (audit 07.11)

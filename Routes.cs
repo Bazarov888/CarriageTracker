@@ -23,6 +23,9 @@ static class Routes
     static List<Route> _cache;
     static DateTime _cacheAt;
 
+    // The routes of the last scan, without scanning (empty before the first one).
+    internal static IReadOnlyList<Route> Known => _cache ?? (IReadOnlyList<Route>)Array.Empty<Route>();
+
     // Routes don't change while the server runs, so the list is kept. It is built again every
     // 10 minutes or as soon as one of its patrols no longer exists.
     public static List<Route> All(EntityManager em, PrefabCollectionSystem prefabs)
