@@ -48,7 +48,7 @@ A change of behaviour starts with a test case.
 | `Commands.cs` | Chat commands (VampireCommandFramework). |
 | `Loc.cs` | Chat texts in English and Russian; `L` answers in the language in use for the current player. Texts made at a check and read later (`Caravan.Note`, `Tracker.LastStats`, `AutoStart.LastResults`, start replies) are `LateText`, put into words when read, in the reader's language. |
 | `Languages.cs` | Each player's own language (`BepInEx/config/CarriageTracker.languages.txt`, kept by `LanguageStore`) and the VCF middleware that switches to it for every command of this mod. |
-| `Diag.cs` | Developer commands `.cvdiag`, registered only with `EnableDiagnostics = true`: components of a caravan object, objects nearby, dumps of carts and patrols, the mod's markers and icons (`markers`), moving a marker (`movemarker`). |
+| `Diag.cs` | Developer commands `.cvdiag`, registered only with `EnableDiagnostics = true`: components of a caravan object, objects nearby, dumps of carts and patrols, the mod's markers and icons (`markers`), moving a marker (`movemarker`), game prefabs by a part of their name (`prefabs`), game component types by a part of their name with the objects that have them (`types`). |
 
 ## Game model
 
@@ -92,6 +92,17 @@ Observed on a live server (game build with BepInEx 6.0.0-be.733):
   squads that set out from their first stop could be killed. The log of 1.0.10 showed `Immortal.IsImmortal` false
   and the game's spawn buff `Buff_General_Spawn_Unit` still on that animal at assembly and after the cart was lost,
   only on woken starts. That buff lasts a few seconds when the game spawns a unit normally.
+- From the dumps of 12.11 (`.cvdiag patrols`, `.cvdiag dump`; 2708 squad spawners, 204 patrols, 15 of them
+  carriage routes):
+  - A route patrol is a scene object without a prefab (no `PrefabGUID`; `StoreSubSceneEntity`, 21 components).
+  - A stop (`PatrolBusStopNode`) is not a place but the id of a road node: a map chunk and a GUID. The game finds
+    the way between two stops itself. The nodes are shared with the other patrols: the carriage routes use 86
+    different ones, the other patrols 282, 57 of them the same. Where a node is isn't in the patrol.
+  - A squad is one of the patrol's groups (`UnitCompositionGroupEntry`: weight, first unit, count), picked by
+    weight from the unit list (`UnitCompositionGroupUnitEntry`). The game's own roaming V Blood come from the same
+    spawners: 64 unit entries have `IsVBloodUnit = true`.
+  - The animal has `Script_RespawnCarriageUponLost_Data` (`RespawnTimer = 720`). By its name the game gives an
+    animal that lost its cart a new one after 12 minutes; not seen in game, and the mod doesn't count on it.
 - Routes finished while no player was near stay frozen at their last stop (`WaitForDespawn`, no units) until
   something wakes them (dump of 30.10: most caravan patrols were in that state).
 
@@ -113,10 +124,17 @@ Not verified, treated as assumptions:
   stood at its first stop for 3 s is assumed to avoid it (1.0.10 armed about 4 s after waking every time).
 - Spawner settings changed by the mod are kept in the server save. That is why `RepairLeftovers` runs on the first
   check after the server starts and why `.cv cleanup` exists.
-- The values written back as "normal" (range, respawn timers and modifier) are each route's own, read from the
-  route's prefab (`Starter.NormalOf`, by the patrol's `PrefabGUID`). The constants in `SpawnRange` (90 m,
-  1000-2700 s) are used only when the prefab's values can't be read or look wrong, with a warning per prefab. Until
-  1.0.18 the constants were always written (audit of 07.11).
+- The values written back as "normal" (range, respawn timers and modifier) are learned from the game
+  (`Starter.NormalOf`), the same for every carriage route. The range: the most common one among the game's other
+  patrols (`SpawnRange.LearnRange`), which the mod never writes into; the carriage routes can't tell it, as with
+  `Source = Mod` each is blocked while it waits and opened again by the mod with what it takes for normal, and that
+  is kept in the save. This assumes carriage routes have the range of the other patrols: all had 90 m before the
+  mod blocked any, and all 189 other patrols had it on 12.11. The timers: those most carriage routes have
+  (`SpawnRange.LearnTimers`; other patrols have their own). A value counts only if at least two show it and no
+  other is as common. The constants in `SpawnRange` (90 m, 1000-2700 s) stand in until both are learned, which is
+  looked at every 30 s and said once in the log; then they are kept until the server restarts. Until 1.0.18 the
+  constants were always written (audit of 07.11); from 1.0.19 to 1.0.22 the values were to be read from the
+  route's prefab, but a route patrol has no `PrefabGUID` (dump of 12.11), so the constants were still used.
 - A start writes into the route step by step and is tracked only once it is in `Runs`. An error before that
   (`Starter.TryStart`) repairs the route at once (`RepairRoute`; if that fails too, it is queued and retried every
   5 s) and marks it failed, so auto-start skips it for an hour; auto-start counts a start only when it happened.

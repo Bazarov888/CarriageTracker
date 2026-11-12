@@ -530,7 +530,7 @@ static class Program
             Eq(2UL, Welcome.Greet(seen, new ulong[] { 1, 2, 3 }, true)[0]);
         });
 
-        // --- 1.0.19: a route's normal values come from its prefab (audit 07.11)
+        // --- 1.0.19: a route's normal values aren't the mod's constants (audit 07.11); where they come from: 1.0.23
         Test("a route's own normal range is what gets written back", () =>
         {
             Eq(120f, SpawnRange.SourceTarget(false, true, 0, SpawnRange.BlockedY, 120f));
@@ -539,7 +539,7 @@ static class Program
             Eq(120f, SpawnRange.RestoreY(0, SpawnRange.BlockedY, 120f));
             Eq(75f, SpawnRange.RestoreY(0, 75f, 120f));
         });
-        Test("a prefab's odd values aren't taken for normal ones", () =>
+        Test("odd values aren't taken for normal ones", () =>
         {
             True(SpawnRange.SaneRange(90f), "90 m is a normal range");
             True(!SpawnRange.SaneRange(0f), "0 is not");
@@ -549,6 +549,43 @@ static class Program
             True(SpawnRange.SaneTimers(1000, 2700), "the game's timers");
             True(!SpawnRange.SaneTimers(0, 0), "a start's zero timers");
             True(!SpawnRange.SaneTimers(2700, 1000), "min above max");
+        });
+
+        // --- 1.0.23: a route patrol has no prefab (patrol dump of 12.11); normal values are learned from the game
+        Test("the range comes from the patrols the mod never touches", () =>
+        {
+            // 12.11: all 189 other patrols at 90 m.
+            var others = new List<float>();
+            for (int i = 0; i < 189; i++) others.Add(90f);
+            Eq<float?>(90f, SpawnRange.LearnRange(others), "12.11");
+            // After a game update: theirs, not the mod's 90.
+            Eq<float?>(120f, SpawnRange.LearnRange(new[] { 120f, 120f, 120f, 60f }), "changed by the game");
+        });
+        Test("one odd patrol, a draw or nothing sane teaches no range", () =>
+        {
+            Eq<float?>(null, SpawnRange.LearnRange(new[] { 75f }), "one patrol");
+            Eq<float?>(null, SpawnRange.LearnRange(new[] { 90f, 90f, 120f, 120f }), "a draw");
+            Eq<float?>(null, SpawnRange.LearnRange(new[] { 0f, SpawnRange.BlockedY, SpawnRange.StartY, float.NaN }), "nothing sane");
+            Eq<float?>(null, SpawnRange.LearnRange(new float[0]), "no patrols");
+        });
+        Test("the timers are those most carriage routes have; a start's zero timers never count", () =>
+        {
+            // 12.11: 15 routes at 1000-2700 s; two of them in the middle of a start.
+            var routes = new List<(double, double, double)>();
+            for (int i = 0; i < 13; i++) routes.Add((1, 1000, 2700));
+            routes.Add((0, 0, 0));
+            routes.Add((0, 0, 0));
+            var t = SpawnRange.LearnTimers(routes);
+            True(t.HasValue && t.Value.Modifier == 1 && t.Value.Min == 1000 && t.Value.Max == 2700, "12.11");
+            // After a game update one route the mod repaired with the old values doesn't outvote the others.
+            t = SpawnRange.LearnTimers(new[] { (2d, 600d, 1800d), (2d, 600d, 1800d), (2d, 600d, 1800d), (1d, 1000d, 2700d) });
+            True(t.HasValue && t.Value.Modifier == 2 && t.Value.Min == 600 && t.Value.Max == 1800, "changed by the game");
+        });
+        Test("one route, a draw or only starts teach no timers", () =>
+        {
+            True(!SpawnRange.LearnTimers(new[] { (1d, 1000d, 2700d) }).HasValue, "one route");
+            True(!SpawnRange.LearnTimers(new[] { (1d, 1000d, 2700d), (1d, 1000d, 2700d), (1d, 600d, 720d), (1d, 600d, 720d) }).HasValue, "a draw");
+            True(!SpawnRange.LearnTimers(new[] { (0d, 0d, 0d), (0d, 0d, 0d), (double.NaN, double.NaN, double.NaN) }).HasValue, "only starts");
         });
 
         // --- 1.0.19: chat messages fit FixedString512Bytes (audit 07.11)

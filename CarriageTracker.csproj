@@ -6,7 +6,7 @@
     <RootNamespace>CarriageTracker</RootNamespace>
     <!-- The only place the version and the plugin identity are written. MyPluginInfo (used by the code)
          and the Thunderstore manifest.json are generated from these at build time. -->
-    <Version>1.0.22</Version>
+    <Version>1.0.23</Version>
     <PluginGuid>CarriageTracker</PluginGuid>
     <PluginName>CarriageTracker</PluginName>
     <Description>Carriages on the map for everyone, chat announcements when they set out, and automatic carriage starts in every act where players are online.</Description>

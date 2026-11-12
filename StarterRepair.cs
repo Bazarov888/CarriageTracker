@@ -25,58 +25,74 @@ static partial class Starter
     static bool TimersZero(object boxed) =>
         SpawnRange.TimersZero(Num(Caravans.Field(boxed, "MinRespawnTime")), Num(Caravans.Field(boxed, "MaxRespawnTime")));
 
-    // A route's normal spawner values: those of the route's prefab (the patrol's PrefabGUID), as the game made
-    // the route from it. The mod's constants (SpawnRange) only if the prefab can't be read or its values are odd
-    // (SpawnRange.SaneRange, SaneTimers): until 1.0.18 the constants were always written, which after a game update
-    // that changes the normal values would have written old ones back (audit of 07.11). One line per prefab in the
-    // log when its values differ from the constants or can't be used.
-    internal readonly record struct Normal(float RangeY, double Modifier, double MinRespawn, double MaxRespawn, bool FromPrefab);
+    // The normal spawner values of a carriage route, learned from the game (SpawnRange.LearnRange: the range of the
+    // patrols the mod never touches; SpawnRange.LearnTimers: the timers most carriage routes have). The mod's
+    // constants (SpawnRange) stand in for what isn't learned yet. Until 1.0.18 the constants were always written,
+    // which after a game update that changes the normal values would have written old ones back (audit of 07.11).
+    // From 1.0.19 to 1.0.22 they were to be read from the route's prefab, but a route patrol has no PrefabGUID
+    // (patrol dump of 12.11), so the constants were still used every time, without a word in the log.
+    // Learned: range and timers both came from the game; then they are kept until the server restarts.
+    internal readonly record struct Normal(float RangeY, double Modifier, double MinRespawn, double MaxRespawn, bool Learned);
 
     static readonly Normal Defaults = new(SpawnRange.NormalY, 1, SpawnRange.NormalMinRespawn, SpawnRange.NormalMaxRespawn, false);
-    static readonly Dictionary<int, Normal> Normals = new();
+    static Normal _normal = Defaults;
+    static DateTime _learnNext;
+    static bool _learnWarned;
 
+    // The same for every carriage route. Never throws: ApplySource asks for every route every 5 seconds, and an
+    // error here must not stop the loop. Until both values are learned it looks again every 30 seconds and gives
+    // what it has so far; why it has nothing is written to the log once.
     internal static Normal NormalOf(EntityManager em, Entity patrol)
     {
-        // Never throws: ApplySource asks for every route every 5 seconds, and an error here must not stop the loop.
-        PrefabGUID guid;
-        PrefabCollectionSystem prefabs;
+        if (_normal.Learned) return _normal;
+        var now = DateTime.UtcNow;
+        if (now < _learnNext) return _normal;
+        _learnNext = now.AddSeconds(30);
         try
         {
-            if (!em.Exists(patrol) || !Caravans.Has<PrefabGUID>(em, patrol)) return Defaults;
-            guid = em.GetComponentData<PrefabGUID>(patrol);
-            if (Normals.TryGetValue(guid.GuidHash, out var known)) return known;
-            var world = Caravans.ServerWorld();
-            prefabs = world == null ? null : Caravans.Prefabs(world);
-        }
-        catch { return Defaults; }
-        if (prefabs == null) return Defaults;   // not cached: tried again once the prefabs are there
-        var n = Defaults;
-        string why = "the prefab has no spawner";
-        string name = guid.GuidHash.ToString();
-        try
-        {
-            if (prefabs._PrefabLookupMap.TryGetName(guid, out string pn)) name = pn;
-            if (prefabs._PrefabGuidToEntityMap.TryGetValue(guid, out Entity prefab) && Caravans.Has<UnitCompositionSpawner>(em, prefab))
+            var routes = Routes.Known;
+            if (routes.Count == 0) return _normal;   // routes not searched yet
+            var ranges = new List<float>();
+            foreach (var p in Routes.OtherPatrols)
             {
-                object b = em.GetComponentData<UnitCompositionSpawner>(prefab);
-                float y = Caravans.Field(b, "PlayerRange") is float2 r ? r.y : float.NaN;
-                double mod = Num(Caravans.Field(b, "RespawnTimeModifier"));
-                double min = Num(Caravans.Field(b, "MinRespawnTime"));
-                double max = Num(Caravans.Field(b, "MaxRespawnTime"));
-                if (SpawnRange.SaneRange(y) && SpawnRange.SaneTimers(min, max) && mod > 0)
-                    n = new Normal(y, mod, min, max, true);
-                else why = $"its values look wrong (range {y}, timers {min}-{max}, modifier {mod})";
+                if (!em.Exists(p) || !Caravans.Has<UnitCompositionSpawner>(em, p)) continue;
+                object b = em.GetComponentData<UnitCompositionSpawner>(p);
+                if (Caravans.Field(b, "PlayerRange") is float2 range) ranges.Add(range.y);
+            }
+            var timers = new List<(double, double, double)>();
+            foreach (var r in routes)
+            {
+                if (!em.Exists(r.Patrol) || !Caravans.Has<UnitCompositionSpawner>(em, r.Patrol)) continue;
+                object b = em.GetComponentData<UnitCompositionSpawner>(r.Patrol);
+                timers.Add((Num(Caravans.Field(b, "RespawnTimeModifier")), Num(Caravans.Field(b, "MinRespawnTime")),
+                            Num(Caravans.Field(b, "MaxRespawnTime"))));
+            }
+            float? y = SpawnRange.LearnRange(ranges);
+            var t = SpawnRange.LearnTimers(timers);
+            _normal = new Normal(y ?? Defaults.RangeY, t?.Modifier ?? Defaults.Modifier, t?.Min ?? Defaults.MinRespawn,
+                                 t?.Max ?? Defaults.MaxRespawn, y.HasValue && t.HasValue);
+            if (_normal.Learned)
+            {
+                bool same = _normal.RangeY == Defaults.RangeY && _normal.Modifier == Defaults.Modifier &&
+                            _normal.MinRespawn == Defaults.MinRespawn && _normal.MaxRespawn == Defaults.MaxRespawn;
+                Plugin.Info($"CarriageTracker: normal spawner values read from the game: range {_normal.RangeY} m ({ranges.Count} other patrols), " +
+                            $"respawn {_normal.MinRespawn}-{_normal.MaxRespawn} s, modifier {_normal.Modifier} ({timers.Count} carriage routes)" +
+                            (same ? "" : "; not the mod's defaults, the game's are used"));
+            }
+            else if (!_learnWarned)
+            {
+                _learnWarned = true;
+                Plugin.Warn($"CarriageTracker: normal spawner values not read from the game yet: range {(y.HasValue ? "known" : "unknown")} " +
+                            $"({ranges.Count} other patrols), respawn timers {(t.HasValue ? "known" : "unknown")} ({timers.Count} carriage routes). " +
+                            $"The mod's defaults stand in (range {SpawnRange.NormalY} m, respawn {SpawnRange.NormalMinRespawn}-{SpawnRange.NormalMaxRespawn} s); looked at again every 30 s");
             }
         }
-        catch (Exception e) { why = $"it can't be read: {e.Message}"; }
-        Normals[guid.GuidHash] = n;
-        if (!n.FromPrefab)
-            Plugin.Warn($"CarriageTracker: route prefab {name}: {why}; the mod's defaults are used as its normal values " +
-                        $"(range {SpawnRange.NormalY} m, respawn {SpawnRange.NormalMinRespawn}-{SpawnRange.NormalMaxRespawn} s)");
-        else if (n.RangeY != SpawnRange.NormalY || n.MinRespawn != SpawnRange.NormalMinRespawn || n.MaxRespawn != SpawnRange.NormalMaxRespawn || n.Modifier != 1)
-            Plugin.Info($"CarriageTracker: route prefab {name}: normal values range {n.RangeY} m, respawn {n.MinRespawn}-{n.MaxRespawn} s, " +
-                        $"modifier {n.Modifier} (not the mod's defaults; the prefab's are used)");
-        return n;
+        catch (Exception e)
+        {
+            if (!_learnWarned) Plugin.Warn($"CarriageTracker: normal spawner values can't be read from the game, the mod's defaults stand in: {e.Message}");
+            _learnWarned = true;
+        }
+        return _normal;
     }
 
     static void NormalTimers(object boxed, Normal n)
