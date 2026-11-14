@@ -63,9 +63,12 @@ Good remarks not done yet. Add new ones here with the date and where they came f
 - A2, audit 07.11: find an unambiguous mark for the mod's markers (a value in a saved component) so `Owned`
   needs no heuristics.
 - Memory, 12.11: the server was killed for memory twice with nobody online (1.0.22 after 13 h, 1.0.23 after 2 h;
-  1.0.21 ran 23 h clean). Cause unknown; ARCHITECTURE.md, Tracking and icons. To decide it: the `memory watch`
-  lines and `BepInEx/CarriageTracker-memory.txt` of 1.0.24, the owner's per-minute memory log and a day on 1.0.21.
-  Don't call it fixed before a cause is shown.
+  1.0.21 ran 23 h clean) and a third time on 14.11 00:19 on 1.0.24 (heap 67 to 1393 MB in 40 s; objects, log and
+  the mod's work quiet; 1.0.24 had run 18 h clean the night before). No common event before the three (timeline
+  of 14.11: one had no caravan in its session, ChurchLegion ran once without a crash). Cause unknown;
+  ARCHITECTURE.md, Tracking and icons. The owner stays on the newest version, no rollback. To decide it: the
+  `memory watch` lines of 1.0.25 (forced collection, collector runs, save file, players) and the server's console
+  log at the moment. Don't call it fixed before a cause is shown.
 - Own caravans, asked by the owner 12.11: a profile per caravan (drop set whole by the profile, guards including
   the rift bosses "Lesser / Primal Blood Soul" as plain strong enemies, its own schedule apart from auto-start:
   hours, days, per day) and, if the game allows, its own route. Known so far: ARCHITECTURE.md, Game model, dumps

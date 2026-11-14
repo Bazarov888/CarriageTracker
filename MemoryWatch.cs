@@ -71,6 +71,10 @@ static class MemoryWatch
     static readonly MemoryLogic.Budget _heapLines = new(), _otherLines = new();
     static int _frames;
     static bool _fileFull;
+    static long _lastFrameAt, _quietHeap;
+    static double _longestGapMs;
+    static int _collections = -1;
+    static bool _collected;
     static double _workMs, _longestMs;
     static (int All, int Prefab, int Networked) _base;
     static bool _fileFailed;
@@ -82,6 +86,14 @@ static class MemoryWatch
         _frames++;
         _workMs += ms;
         if (ms > _longestMs) _longestMs = ms;
+        // The longest time between two frames: a server that stalls (a save, a collection) shows here.
+        long at = Stopwatch.GetTimestamp();
+        if (_lastFrameAt != 0)
+        {
+            double gap = (at - _lastFrameAt) * 1000.0 / Stopwatch.Frequency;
+            if (gap > _longestGapMs) _longestGapMs = gap;
+        }
+        _lastFrameAt = at;
     }
 
     // Objects in the server world: all of them, those made from a prefab, and those sent to players.
@@ -138,8 +150,17 @@ static class MemoryWatch
         int logLines = 0;
         if (log != null) foreach (var kv in log) logLines += kv.Value.Count;
         int frames = _frames;
-        double workMs = _workMs, longestMs = _longestMs;
-        _frames = 0; _workMs = 0; _longestMs = 0;
+        double workMs = _workMs, longestMs = _longestMs, longestGapMs = _longestGapMs;
+        _frames = 0; _workMs = 0; _longestMs = 0; _longestGapMs = 0;
+        // How many times the game's collector ran since the last sample.
+        int ran = -1;
+        try
+        {
+            int total = Il2CppSystem.GC.CollectionCount(0);
+            if (_collections >= 0) ran = total - _collections;
+            _collections = total;
+        }
+        catch { }
 
         // Quiet while the world loads: 5 minutes from the first sample that finds the server world.
         if (_worldSince == DateTime.MinValue)
@@ -153,6 +174,11 @@ static class MemoryWatch
         bool heapJump = MemoryLogic.HeapJump(_heap), ramJump = MemoryLogic.RamJump(_ram), flood = MemoryLogic.Flood(logLines);
         if (!heapJump && !ramJump && !flood)
         {
+            if (!_heapLines.Open(t))
+            {
+                if (heap > 0) _quietHeap = heap;
+                _collected = false;
+            }
             // What the world normally holds, to compare with: counted every 10 minutes, only at a sample without
             // an alarm and outside an incident.
             if (now >= _nextBase && !_heapLines.Open(t) && !_otherLines.Open(t))
@@ -180,14 +206,87 @@ static class MemoryWatch
                   $"icons {Icons.Live}, markers {Proxies.Live}, repeated errors {Plugin.Repeats}";
         }
         catch (Exception e) { mod = $"unknown ({e.GetType().Name})"; }
+        // Once per incident, with the heap far over its quiet size: what does a full collection free?
+        string collect = "";
+        if (heapJump && !_collected && MemoryLogic.Collect(_quietHeap, heap))
+        {
+            _collected = true;
+            try
+            {
+                long began = Stopwatch.GetTimestamp();
+                Il2CppSystem.GC.Collect();
+                long after = Il2CppSystem.GC.GetTotalMemory(false) >> 20;
+                double took = (Stopwatch.GetTimestamp() - began) * 1000.0 / Stopwatch.Frequency;
+                collect = $"; forced collection: {heap} -> {after} MB in {Math.Round(took)} ms, " +
+                          (MemoryLogic.WasGarbage(_quietHeap, heap, after) ? "most of the growth was garbage" : "most of the growth is still held by something");
+            }
+            catch (Exception e) { collect = $"; forced collection failed ({e.GetType().Name})"; }
+        }
         string was = _base.All > 0 ? $" (when quiet: {_base.All}, from prefabs {_base.Prefab}, networked {_base.Networked})" : "";
         string line = $"CarriageTracker memory watch, line {lineNo} of {MemoryLogic.LinesPerIncident} ({string.Join(", ", why)}): " +
-                      $"game heap {Was(_heap)}, process in RAM {Was(_ram)}, plugins' .NET heap {GC.GetTotalMemory(false) >> 20} MB; " +
+                      $"game heap {Was(_heap)} (quiet {_quietHeap}), process in RAM {Was(_ram)}, plugins' .NET heap {GC.GetTotalMemory(false) >> 20} MB{collect}; " +
+                      $"collector runs in the interval {(ran < 0 ? "unknown" : ran.ToString())}, {UnityText()}; " +
+                      $"players online {PlayersText()}; newest save {SaveText()}; " +
                       $"world objects {ObjectsText()}{was}; " +
                       $"log lines in the last {Math.Round(seconds)} s: {LogText(log, logLines)}; " +
-                      $"server frames {frames}, the mod's work in them {Math.Round(workMs)} ms, longest {Math.Round(longestMs, 1)} ms; mod: {mod}";
+                      $"server frames {frames}, longest gap between frames {Math.Round(longestGapMs)} ms, the mod's work in them {Math.Round(workMs)} ms, longest {Math.Round(longestMs, 1)} ms; mod: {mod}";
         Plugin.Warn(line);
         ToFile(line);
+    }
+
+    // Unity's own account: its native memory (not the collector's heap) and the collector's heap as Unity sees it.
+    static string UnityText()
+    {
+        try
+        {
+            long used = UnityEngine.Profiling.Profiler.GetTotalAllocatedMemoryLong() >> 20;
+            long reserved = UnityEngine.Profiling.Profiler.GetTotalReservedMemoryLong() >> 20;
+            long monoUsed = UnityEngine.Profiling.Profiler.GetMonoUsedSizeLong() >> 20;
+            long monoHeap = UnityEngine.Profiling.Profiler.GetMonoHeapSizeLong() >> 20;
+            return $"Unity native {used} MB of {reserved} reserved, collector's heap {monoUsed} MB used of {monoHeap}, collector {UnityEngine.Scripting.GarbageCollector.GCMode}";
+        }
+        catch (Exception e) { return $"Unity memory unknown ({e.GetType().Name})"; }
+    }
+
+    static string PlayersText()
+    {
+        try
+        {
+            var world = Caravans.ServerWorld();
+            if (world == null) return "unknown";
+            var em = world.EntityManager;
+            var users = Queries.Get(em, "User", false, Ct<User>.RO).ToEntityArray(Unity.Collections.Allocator.Temp);
+            try
+            {
+                int online = 0;
+                foreach (var u in users) if (em.GetComponentData<User>(u).IsConnected) online++;
+                return $"{online} of {users.Length}";
+            }
+            finally { users.Dispose(); }
+        }
+        catch (Exception e) { return $"unknown ({e.GetType().Name})"; }
+    }
+
+    // The newest file under save-data/Saves: a save being written at the moment of a jump shows as a file a few
+    // seconds old.
+    static string SaveText()
+    {
+        try
+        {
+            string root = Path.Combine(BepInEx.Paths.GameRootPath, "save-data", "Saves");
+            if (!Directory.Exists(root)) return "folder not found";
+            FileInfo newest = null;
+            int seen = 0;
+            foreach (var path in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+            {
+                if (++seen > 2000) break;
+                var f = new FileInfo(path);
+                if (newest == null || f.LastWriteTimeUtc > newest.LastWriteTimeUtc) newest = f;
+            }
+            if (newest == null) return "none";
+            return $"{newest.Name}, {newest.Length >> 10} KB, written {Math.Round((DateTime.UtcNow - newest.LastWriteTimeUtc).TotalSeconds)} s ago ({seen} files)";
+        }
+        catch (Exception e) { return $"unknown ({e.GetType().Name})"; }
     }
 
     static string LogText(Dictionary<string, (int Count, int Bad, string First)> log, int total)

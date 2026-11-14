@@ -20,6 +20,11 @@ public static class MemoryLogic
     // The world loads in the first minutes and memory grows fast then.
     public const int QuietAfterStartSeconds = 300;
     public const int LineEverySeconds = 30, LinesPerIncident = 20, IncidentEndsSeconds = 600, IncidentMaxSeconds = 3600;
+    // On 14.11 the server was killed 40 s after the first line and only two lines were written. The first lines of
+    // an incident come at every sample.
+    public const int FastLines = 6;
+    // The heap is this much over its quiet size: time to ask the game's collector what of it is garbage.
+    public const long CollectOverMb = 300;
 
     // Samples oldest first, the newest last, in MB. A sample that couldn't be read is 0 and never counts.
     public static bool HeapJump(IReadOnlyList<long> mb) => Grew(mb, long.MaxValue, HeapMinuteMb);
@@ -36,6 +41,14 @@ public static class MemoryLogic
     }
 
     public static bool Flood(int logLines) => logLines >= FloodLines;
+
+    // One forced collection per incident, once the heap is far over its quiet size. What it frees tells garbage
+    // (made faster than the game collects it, or the collector not running) from objects something still holds.
+    public static bool Collect(long quietMb, long nowMb) => quietMb > 0 && nowMb - quietMb >= CollectOverMb;
+
+    // After the forced collection: was most of what had grown freed?
+    public static bool WasGarbage(long quietMb, long beforeMb, long afterMb) =>
+        beforeMb > quietMb && (beforeMb - afterMb) * 2 >= beforeMb - quietMb;
 
     // How many lines an incident may write: the first at once, the next ones no more often than every 30 seconds,
     // 20 in all, so the watch doesn't add to the trouble it reports. An incident ends after 10 minutes without an
@@ -58,7 +71,7 @@ public static class MemoryLogic
             if (!Open(t)) _lines = 0;
             _lastAlarm = t;
             if (_lines >= LinesPerIncident) return false;
-            if (_lines > 0 && t - _lastLine < LineEverySeconds) return false;
+            if (_lines >= FastLines && t - _lastLine < LineEverySeconds) return false;
             if (_lines == 0) _first = t;
             _lastLine = t;
             _lines++;
