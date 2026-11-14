@@ -293,11 +293,12 @@ is queued like above; if the whole pass fails it is tried again on the next chec
   all plugins (a BepInEx log listener). `MemoryLogic` says when that is an alarm (heap +50 MB in a minute, process
   +100 MB in 10 s or +300 MB in a minute, 500 log lines in 10 s; the process limits are a guess, what a save
   costs wasn't measured) and how often a line is written (`MemoryLogic.Budget`: at once, then every 30 s, 20 per
-  incident, the first 6 at every sample, which ends after 10 quiet minutes or an hour; the heap has its own
-  budget; none in the first 5 minutes of the world). Since 1.0.25 the line also has the collector's runs and mode,
+  incident, the first 6 of them at every sample; an incident ends after 10 quiet minutes or an hour; the heap has
+  its own budget; none in the first 5 minutes of the world). Since 1.0.25 the line also has the collector's runs and mode,
   Unity's memory numbers, players online, the newest save file and the longest gap between frames, and once per
-  incident, with the heap 300 MB over its quiet size, one forced collection with what it freed
-  (`MemoryLogic.Collect`, `WasGarbage`): on 14.11 the watch saw the jump (67 to 1393 MB in 40 s, objects, log and
+  incident, with the heap 300 MB over its quiet size, one forced collection at a written line with what it freed
+  (`MemoryLogic.Collect`, `WasGarbage`, `Quiet`: the quiet size is the smallest sample of the last quiet minute, so
+  growth slower than the alarm moves it up): on 14.11 the watch saw the jump (67 to 1393 MB in 40 s, objects, log and
   the mod's work all quiet) but not what the memory was. The line goes to the log and to
   `BepInEx/CarriageTracker-memory.txt`. Why: on 12.11 the server was killed for memory twice with nobody online
   and no caravans (1.0.22 after 13 hours; 1.0.23 two hours after its start: game heap 69 to 1570 MB within 10

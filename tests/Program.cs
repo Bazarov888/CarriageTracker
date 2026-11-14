@@ -824,6 +824,10 @@ static class Program
             False(MemoryLogic.Collect(0, 1022), "no quiet size known");
             True(MemoryLogic.WasGarbage(67, 1022, 90), "nearly all freed");
             False(MemoryLogic.WasGarbage(67, 1022, 900), "nearly all held");
+            False(MemoryLogic.WasGarbage(67, 1022, 1100), "grew during the collection");
+            // The quiet size is the smallest of the kept minute; unread samples don't count.
+            True(MemoryLogic.Quiet(new List<long> { 68, 67, 0, 70, 69, 66, 204 }) == 66, "smallest of the minute");
+            True(MemoryLogic.Quiet(new List<long> { 0, 0 }) == 0, "nothing read");
         });
         Test("something harmless alarming every 2 minutes for hours doesn't silence the watch", () =>
         {

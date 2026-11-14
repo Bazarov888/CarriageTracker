@@ -46,9 +46,19 @@ public static class MemoryLogic
     // (made faster than the game collects it, or the collector not running) from objects something still holds.
     public static bool Collect(long quietMb, long nowMb) => quietMb > 0 && nowMb - quietMb >= CollectOverMb;
 
-    // After the forced collection: was most of what had grown freed?
+    // After the forced collection: was most of what had grown freed? "No" is the weaker answer: the size read
+    // right after one collection is an upper bound of what is alive (review of 1.0.25).
     public static bool WasGarbage(long quietMb, long beforeMb, long afterMb) =>
         beforeMb > quietMb && (beforeMb - afterMb) * 2 >= beforeMb - quietMb;
+
+    // The heap's quiet size: the smallest of the kept samples (a minute), unread ones (0) aside; 0 if none.
+    public static long Quiet(IReadOnlyList<long> mb)
+    {
+        long least = 0;
+        foreach (long v in mb)
+            if (v > 0 && (least == 0 || v < least)) least = v;
+        return least;
+    }
 
     // How many lines an incident may write: the first at once, the next ones no more often than every 30 seconds,
     // 20 in all, so the watch doesn't add to the trouble it reports. An incident ends after 10 minutes without an
