@@ -802,10 +802,13 @@ static class Program
         {
             var b = new MemoryLogic.Budget();
             True(b.Alarm(1000), "first line");
-            False(b.Alarm(1010), "10 s later");
-            True(b.Alarm(1030), "30 s later");
-            int lines = 2;
-            for (double t = 1040; t < 1900; t += 10) if (b.Alarm(t)) lines++;
+            // 14.11: killed 40 s after the first line. The first 6 lines come at every sample, the rest every 30 s.
+            int lines = 1;
+            for (double t = 1010; t <= 1050; t += 10) { True(b.Alarm(t), $"line at {t}"); lines++; }
+            False(b.Alarm(1060), "the 7th waits 30 s");
+            True(b.Alarm(1080), "30 s after the 6th");
+            lines++;
+            for (double t = 1090; t < 1900; t += 10) if (b.Alarm(t)) lines++;
             True(lines == MemoryLogic.LinesPerIncident, $"an alarm at every sample for 15 minutes: {lines} lines");
             False(b.Alarm(1890 + 590), "590 quiet seconds after the last alarm: still the same incident");
             True(b.Alarm(1890 + 590 + 600), "10 quiet minutes end it");
@@ -813,6 +816,19 @@ static class Program
             False(MemoryLogic.Flood(120), "a busy but normal log");
         });
 
+        Test("a forced collection is asked for once the heap is 300 MB over its quiet size", () =>
+        {
+            // 14.11: quiet 67 MB, then 204, 1022, 1393 MB at 10-second samples.
+            False(MemoryLogic.Collect(67, 204), "204 MB");
+            True(MemoryLogic.Collect(67, 1022), "1022 MB");
+            False(MemoryLogic.Collect(0, 1022), "no quiet size known");
+            True(MemoryLogic.WasGarbage(67, 1022, 90), "nearly all freed");
+            False(MemoryLogic.WasGarbage(67, 1022, 900), "nearly all held");
+            False(MemoryLogic.WasGarbage(67, 1022, 1100), "grew during the collection");
+            // The quiet size is the smallest of the kept minute; unread samples don't count.
+            True(MemoryLogic.Quiet(new List<long> { 68, 67, 0, 70, 69, 66, 204 }) == 66, "smallest of the minute");
+            True(MemoryLogic.Quiet(new List<long> { 0, 0 }) == 0, "nothing read");
+        });
         Test("something harmless alarming every 2 minutes for hours doesn't silence the watch", () =>
         {
             // Review of 1.0.24: the process alarms every 2 minutes for 3 hours, then the game heap jumps.

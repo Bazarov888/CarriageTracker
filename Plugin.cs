@@ -156,6 +156,7 @@ public class Ticker : UnityEngine.MonoBehaviour
     {
         if (Stopped) return;
         long began = System.Diagnostics.Stopwatch.GetTimestamp();
+        MemoryWatch.FrameStart(began);
         Work();
         MemoryWatch.Frame((System.Diagnostics.Stopwatch.GetTimestamp() - began) * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
     }

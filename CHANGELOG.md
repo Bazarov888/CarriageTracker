@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.25
+
+The memory watch says more. On 14.11 it caught the jump (game heap 67 to 1393 MB in 40 seconds, no new objects in the world, nothing in the log, the mod's own work 3 ms) before the server was killed, but not who took the memory. Nothing changes for players.
+
+- The first 6 lines of an incident are written at every 10-second sample (before: one per 30 seconds, so only two lines made it).
+- New in each line: how many times the game's collector ran in the interval and its mode; Unity's own numbers (native memory, the collector's heap); players online; the newest save file with its size and age, if the saves are in `save-data/Saves` under the server folder (a save being written at that moment shows); the longest time between two server frames.
+- Once per incident, at a line written with the game heap 300 MB over its quiet size, the watch runs one full collection and writes how much it freed. Freed: the memory was garbage made faster than the game collects it. Not freed by that one collection: most likely something holds it, but that answer is the weaker one. If the collector didn't run at all, the line says so. This is the only thing the watch does besides reporting.
+
 ## 1.0.24
 
 A memory watch, after the server was killed for memory twice on 12.11 with nobody online (the cause isn't known yet), and developer commands that try out what the mod's own caravans will need. Nothing changes for players.
