@@ -1,6 +1,4 @@
 using System.IO;
-using System.Reflection;
-using VampireCommandFramework;
 
 namespace CarriageTracker;
 
@@ -22,20 +20,4 @@ static class Languages
 
     // False when the choice couldn't be written to the file yet (it is kept and written later).
     public static bool Set(ulong platformId, string lang) => Store.Set(platformId, lang);
-}
-
-// Every command of this mod answers in the language of the player who typed it.
-class LanguageMiddleware : CommandMiddleware
-{
-    static bool Ours(MethodInfo method) => method?.DeclaringType?.Assembly == typeof(Plugin).Assembly;
-
-    public override void BeforeExecute(ICommandContext ctx, CommandAttribute attribute, MethodInfo method)
-    {
-        if (Ours(method) && ctx is ChatCommandContext chat) L.Use(chat.Event.User.PlatformId);
-    }
-
-    public override void AfterExecute(ICommandContext ctx, CommandAttribute attribute, MethodInfo method)
-    {
-        if (Ours(method)) L.UseDefault();
-    }
 }

@@ -3,42 +3,37 @@ using System.Collections.Generic;
 
 namespace CarriageTracker;
 
+// A chat language, passed to every text that is made (audit 07.11 by Nikolai, A5). Until 1.0.26 the language was
+// ambient: set around each command and each personal message, so a text made in between, or after a command that
+// failed midway, came out in whatever language was set last. Now nothing can make a text without saying for whom.
+readonly record struct Lang(string Code)
+{
+    // The server's default language (General.Language), for the server log and for players without their own.
+    public static Lang Server => new(Settings.Russian ? "ru" : "en");
+
+    // A player's own language (.cv lang), or the server's.
+    public static Lang Of(ulong platformId)
+    {
+        string code = Languages.Of(platformId);
+        return L.Known(code) ? new Lang(code) : Server;
+    }
+
+    public static Lang Of(VampireCommandFramework.ChatCommandContext ctx) => Of(ctx.Event.User.PlatformId);
+
+    public bool Russian => Code == "ru";
+    public override string ToString() => Code;
+}
+
 // Chat texts in English and Russian. Each player can pick their own language (.cv lang, see Languages);
 // General.Language in the config is the default. Placeholders {0}, {1}... are filled in the order the code
 // passes the values.
 static class L
 {
-    // Language of the player being answered now (set around each command and each personal message);
-    // null = the server default.
-    static string _lang;
-
     public static bool Known(string lang) => lang == "en" || lang == "ru";
-    static bool Russian => (_lang ?? (Settings.Russian ? "ru" : "en")) == "ru";
 
-    public static void Use(ulong platformId) => _lang = Languages.Of(platformId);
-    public static void Use(string lang) => _lang = Known(lang) ? lang : null;
-    public static void UseDefault() => _lang = null;
-    public static string Current => _lang;
-
-    // A text in a given language, whatever language is in use now.
-    public static string In(string lang, string key, params object[] args)
+    public static string T(Lang lang, string key, params object[] args)
     {
-        var saved = _lang;
-        try { Use(lang); return T(key, args); }
-        finally { _lang = saved; }
-    }
-
-    // A text in the language of one player, whatever language is in use now.
-    public static string For(ulong platformId, string key, params object[] args)
-    {
-        var saved = _lang;
-        try { Use(platformId); return T(key, args); }
-        finally { _lang = saved; }
-    }
-
-    public static string T(string key, params object[] args)
-    {
-        var table = Russian ? Ru : En;
+        var table = lang.Russian ? Ru : En;
         if (!table.TryGetValue(key, out var text) && !En.TryGetValue(key, out text)) return key;
         if (args == null || args.Length == 0) return text;
         try { return string.Format(text, args); }
@@ -47,25 +42,26 @@ static class L
 
     // Readable route name. An unknown route (e.g. added by a game update) shows its key.
     // side: "east" / "west" for the two patrols of one key (Routes.Route.Side).
-    public static string Route(string key, string side = null)
+    public static string Route(Lang lang, string key, string side = null)
     {
         if (string.IsNullOrEmpty(key)) return "?";
-        var table = Russian ? Ru : En;
+        var table = lang.Russian ? Ru : En;
         string name = table.TryGetValue("route." + key, out var t) || En.TryGetValue("route." + key, out t) ? t : key;
-        return side == null ? name : name + T("side." + side);
+        return side == null ? name : name + T(lang, "side." + side);
     }
 
-    public static string Act(int act) => act >= 1 && act <= 4 ? T("act.name", Acts.Roman(act)) : T("act.unknown");
+    public static string Act(Lang lang, int act) =>
+        act >= 1 && act <= 4 ? T(lang, "act.name", Acts.Roman(act)) : T(lang, "act.unknown");
 
     // "Act III+IV" for a route or a player served by several acts.
-    public static string ActList(IEnumerable<int> acts)
+    public static string ActList(Lang lang, IEnumerable<int> acts)
     {
         var romans = new List<string>();
         foreach (int a in acts) if (a >= 1 && a <= 4) romans.Add(Acts.Roman(a));
-        return romans.Count == 0 ? T("act.unknown") : T("act.name", string.Join("+", romans));
+        return romans.Count == 0 ? T(lang, "act.unknown") : T(lang, "act.name", string.Join("+", romans));
     }
 
-    public static string Region(string region) => region == null ? "?" : T("region." + region);
+    public static string Region(Lang lang, string region) => region == null ? "?" : T(lang, "region." + region);
 
     static readonly Dictionary<string, string> En = new()
     {
@@ -351,13 +347,15 @@ static class L
 }
 
 // Chat text made now but read later, by someone whose language may differ: a caravan's note in the cache of the last
-// check (.cv l, .cv m), the last check's stats, auto-start's last results (.cv auto). Made in the reader's language
-// when it is read (string.Format and ToString call it), not in the language of whoever happened to cause the check.
-// Until 1.0.22 a player got these half in their language, half in the server's (review of 11.11).
+// check (.cv l, .cv m), the last check's stats, auto-start's last results (.cv auto), a start's reply. Put into words
+// in the reader's language when it is read (In). Until 1.0.22 a player got these half in their language, half in
+// the server's (review of 11.11).
 sealed class LateText
 {
-    readonly Func<string> _make;
-    public LateText(Func<string> make) => _make = make;
-    public static LateText Of(string done) => new(() => done);
-    public override string ToString() => _make();
+    readonly Func<Lang, string> _make;
+    public LateText(Func<Lang, string> make) => _make = make;
+    public static LateText Of(string done) => new(_ => done);
+    public string In(Lang lang) => _make(lang);
+    // For the server log only; chat always goes through In.
+    public override string ToString() => _make(Lang.Server);
 }

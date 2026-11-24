@@ -17,7 +17,6 @@ public class Plugin : BasePlugin
 {
     internal static ManualLogSource Logger;
     Harmony _harmony;
-    LanguageMiddleware _language;
     Ticker _ticker;
 
     // Bloodcraft (zfolmt) with its leveling sets the character level the game shows (Equipment), which
@@ -82,7 +81,6 @@ public class Plugin : BasePlugin
         try { BepInEx.Logging.Logger.Listeners.Add(MemoryWatch.Log = new LogCounter()); }
         catch (Exception e) { MemoryWatch.Log = null; Log.LogWarning($"CarriageTracker: the memory watch can't count log lines: {e.Message}"); }
         _ticker = AddComponent<Ticker>();
-        CommandRegistry.Middlewares.Add(_language = new LanguageMiddleware());
         CommandRegistry.RegisterCommandType(typeof(Commands));
         if (Settings.EnableDiagnostics.Value) CommandRegistry.RegisterCommandType(typeof(DiagCommands));
         Log.LogInfo($"{MyPluginInfo.PLUGIN_NAME} {MyPluginInfo.PLUGIN_VERSION} loaded, source {Settings.Source.Value}, auto-start every {Settings.AutoInterval.Value} min");
@@ -136,7 +134,6 @@ public class Plugin : BasePlugin
         try { if (MemoryWatch.Log != null) BepInEx.Logging.Logger.Listeners.Remove(MemoryWatch.Log); } catch { }
         MemoryWatch.Log = null;
         CommandRegistry.UnregisterAssembly();
-        if (_language != null) CommandRegistry.Middlewares.Remove(_language);
         _harmony?.UnpatchSelf();
         return true;
     }
@@ -163,9 +160,6 @@ public class Ticker : UnityEngine.MonoBehaviour
 
     static void Work()
     {
-        // Background work speaks the server's default language (a command that failed midway could leave
-        // its player's language set).
-        L.UseDefault();
         if (Starter.Any)
         {
             try

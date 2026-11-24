@@ -206,20 +206,20 @@ static class Caravans
         bool lootIcon = Settings.IconOnLoot.Value;
         bool frozenIcon = Settings.IconOnFrozen.Value;
         foreach (var c in containers)
-            result.Add(new Caravan(c.Route, c.Entity, c.Pos, new LateText(() => L.T("note.loot")), false, lootIcon, Entity.Null, null, "loot"));
+            result.Add(new Caravan(c.Route, c.Entity, c.Pos, new LateText(lang => L.T(lang, "note.loot")), false, lootIcon, Entity.Null, null, "loot"));
         foreach (var cart in carts)
         {
             bool lootInPlace = containers.Exists(c => c.Route == cart.Route && Dist2(c.Pos, cart.Pos) < 15);
             if (!CaravanRules.ShowCart(OnMap(cart.Pos), lootInPlace, cart.Status, cart.Orphan)) continue;
             var progress = cart.Stops;
-            string StopNote() { string stops = Routes.StopText(progress); return stops.Length > 0 ? ", " + stops : ""; }
+            string StopNote(Lang lang) { string stops = Routes.StopText(lang, progress); return stops.Length > 0 ? ", " + stops : ""; }
             string status = cart.Status;
             string stopLog = cart.Stops != null ? $" stop {cart.Stops.Log}" : "";
             if (!cart.Frozen)
-                result.Add(new Caravan(cart.Route, cart.Entity, cart.Pos, new LateText(() => L.T("note.moving", StopNote())), false, true,
+                result.Add(new Caravan(cart.Route, cart.Entity, cart.Pos, new LateText(lang => L.T(lang, "note.moving", StopNote(lang))), false, true,
                                        cart.Patrol, cart.Stops, "moving" + stopLog));
             else
-                result.Add(new Caravan(cart.Route, cart.Entity, cart.Pos, new LateText(() => L.T("note.frozen", status, StopNote())), true, frozenIcon,
+                result.Add(new Caravan(cart.Route, cart.Entity, cart.Pos, new LateText(lang => L.T(lang, "note.frozen", status, StopNote(lang))), true, frozenIcon,
                                        cart.Patrol, cart.Stops, $"frozen ({cart.Status})" + stopLog));
         }
         return result;
@@ -268,10 +268,10 @@ static class Caravans
 
     public static float Dist2(float3 a, float3 b) => math.distance(new float2(a.x, a.z), new float2(b.x, b.z));
 
-    public static string Direction(float dx, float dz)
+    public static string Direction(Lang lang, float dx, float dz)
     {
         double angle = (Math.Atan2(dx, dz) * 180 / Math.PI + 360) % 360;
-        return L.T("dir." + ((int)Math.Round(angle / 45) % 8));
+        return L.T(lang, "dir." + ((int)Math.Round(angle / 45) % 8));
     }
 }
 

@@ -115,12 +115,12 @@ static class Routes
     }
 
     // Readable route name for chat, with the side when two patrols share the key.
-    public static string Name(Route r) => L.Route(r.Key, r.Side);
+    public static string Name(Lang lang, Route r) => L.Route(lang, r.Key, r.Side);
 
-    public static string Name(string key, Entity patrol)
+    public static string Name(Lang lang, string key, Entity patrol)
     {
         var known = _cache?.Find(r => r.Patrol == patrol);
-        return L.Route(key, known?.Key == key ? known.Side : null);
+        return L.Route(lang, key, known?.Key == key ? known.Side : null);
     }
 
     internal static Entity AsEntity(object o) =>
@@ -176,8 +176,8 @@ static class Routes
     }
 
     // "stop 3 of 7" for chat, empty if unknown.
-    public static string StopText(Progress p) =>
-        p == null ? "" : p.Count > 0 ? L.T("stops.of", p.Number, p.Count) : L.T("stops.at", p.Number);
+    public static string StopText(Lang lang, Progress p) =>
+        p == null ? "" : p.Count > 0 ? L.T(lang, "stops.of", p.Number, p.Count) : L.T(lang, "stops.at", p.Number);
 
     static Type _stopType;
     static bool _stopTypeLooked;
@@ -236,18 +236,18 @@ static class Routes
     public static RouteSnap Snap(EntityManager em, Route r) => Snap(em, r.Patrol, r.Key);
 
     // State of a route for .cv routes and .cv ss.
-    public static string Describe(EntityManager em, Entity patrol)
+    public static string Describe(Lang lang, EntityManager em, Entity patrol)
     {
         var s = Snap(em, patrol, null);
         return RouteLogic.Classify(s with { Running = false, FailedRecently = false }) switch
         {
-            RouteState.AtEnd => s.Units > 0 ? L.T("route.state.endguarded") : L.T("route.state.endempty"),
+            RouteState.AtEnd => s.Units > 0 ? L.T(lang, "route.state.endguarded") : L.T(lang, "route.state.endempty"),
             // The cart was destroyed: the horse (and maybe some guards) walk on to the end of the route.
-            RouteState.CartLost or RouteState.FrozenLeftover => L.T("route.state.nocart"),
-            RouteState.LoopLeftover => L.T("route.state.loopleft"),
-            _ when s.WaitingForSpawn => L.T("route.state.waiting"),
-            _ when s.Units > 0 && s.Move == "Moving" => L.T("route.state.moving"),
-            _ => L.T("route.state.other", s.Spawner, s.Move, s.Units),
+            RouteState.CartLost or RouteState.FrozenLeftover => L.T(lang, "route.state.nocart"),
+            RouteState.LoopLeftover => L.T(lang, "route.state.loopleft"),
+            _ when s.WaitingForSpawn => L.T(lang, "route.state.waiting"),
+            _ when s.Units > 0 && s.Move == "Moving" => L.T(lang, "route.state.moving"),
+            _ => L.T(lang, "route.state.other", s.Spawner, s.Move, s.Units),
         };
     }
 }

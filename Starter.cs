@@ -137,10 +137,10 @@ static partial class Starter
     }
 
     // note: why this route was picked, for the log line (auto-start). Returns the reply for the player.
-    public static string Start(EntityManager em, Routes.Route route, Entity userEntity, bool auto = false, int act = 0, string note = "")
+    public static string Start(Lang lang, EntityManager em, Routes.Route route, Entity userEntity, bool auto = false, int act = 0, string note = "")
     {
         TryStart(em, route, userEntity, out var text, auto, act, note);
-        return text.ToString();
+        return text.In(lang);
     }
 
     // true if the caravan is being started. A start writes into the route step by step (the old squad removed,
@@ -154,9 +154,9 @@ static partial class Starter
     {
         var patrol = route.Patrol;
         GameCheck.Ensure();
-        if (!GameCheck.StartsOk) { text = new LateText(() => L.T("start.broken", GameCheck.Missing)); return false; }
-        if (Paused) { text = new LateText(() => L.T("cleanup.paused")); return false; }
-        if (IsRunning(patrol)) { text = new LateText(() => L.T("start.already", Routes.Name(route))); return false; }
+        if (!GameCheck.StartsOk) { text = new LateText(lang => L.T(lang, "start.broken", GameCheck.Missing)); return false; }
+        if (Paused) { text = new LateText(lang => L.T(lang, "cleanup.paused")); return false; }
+        if (IsRunning(patrol)) { text = new LateText(lang => L.T(lang, "start.already", Routes.Name(lang, route))); return false; }
         // A route still waiting for its settings back is repaired here first: a start would save the start's settings
         // as its own. If that fails again it isn't started (review of 11.11).
         if (AwaitsRepair(patrol))
@@ -170,13 +170,13 @@ static partial class Starter
             catch (Exception e)
             {
                 Plugin.Warn($"CarriageTracker start: route {route.Key} not started, its settings still can't be given back: {e.Message}");
-                text = new LateText(() => L.T("start.repairing", Routes.Name(route)));
+                text = new LateText(lang => L.T(lang, "start.repairing", Routes.Name(lang, route)));
                 return false;
             }
         }
         try
         {
-            text = LateText.Of(Begin(em, route, userEntity, auto, act, note));
+            text = Begin(em, route, userEntity, auto, act, note);
             return true;
         }
         catch (Exception e)
@@ -202,15 +202,14 @@ static partial class Starter
                 }
             }
             Plugin.Error($"CarriageTracker start: route {route.Key} patrol {patrol.Index}:{patrol.Version} failed: {e}{after}");
-            text = new LateText(() => L.T(tracked ? "start.goingon" : "start.error", Routes.Name(route)));
+            text = new LateText(lang => L.T(lang, tracked ? "start.goingon" : "start.error", Routes.Name(lang, route)));
             return tracked;
         }
     }
 
-    static string Begin(EntityManager em, Routes.Route route, Entity userEntity, bool auto, int act, string note)
+    static LateText Begin(EntityManager em, Routes.Route route, Entity userEntity, bool auto, int act, string note)
     {
         var patrol = route.Patrol;
-        string name = Routes.Name(route);
         var run = new Run { Patrol = patrol, Route = route.Key, User = userEntity, Auto = auto, Act = act };
         run.State.Started = DateTime.UtcNow;
 
@@ -271,8 +270,10 @@ static partial class Starter
                     $"removed {units.Count} units and {carts.Count} carts" +
                     (run.State.Phase == RunPhase.Waking ? "; at its last stop: waking it before the squad may spawn" : ""));
         bool midway = RouteLogic.NeedsReset(stops, Routes.MoveStatus(em, patrol));
-        return L.T("start.ok", name, units.Count, carts.Count, Routes.StopText(stops)) +
-               (reset ? L.T("start.reset", Routes.StopText(before)) : midway ? L.T("start.midway") : "");
+        int unitCount = units.Count, cartCount = carts.Count;
+        return new LateText(lang =>
+            L.T(lang, "start.ok", Routes.Name(lang, route), unitCount, cartCount, Routes.StopText(lang, stops)) +
+            (reset ? L.T(lang, "start.reset", Routes.StopText(lang, before)) : midway ? L.T(lang, "start.midway") : ""));
     }
 
     // Units in one squad of the route: the largest group of its composition (the game picks one group per
@@ -426,16 +427,16 @@ static partial class Starter
         return n;
     }
 
-    public static List<string> Status(EntityManager em)
+    public static List<string> Status(Lang lang, EntityManager em)
     {
-        if (Runs.Count == 0) return new List<string> { L.T("status.none") };
+        if (Runs.Count == 0) return new List<string> { L.T(lang, "status.none") };
         var parts = new List<string>();
         foreach (var run in Runs)
         {
-            string state = em.Exists(run.Patrol) ? Routes.Describe(em, run.Patrol) : L.T("status.gone");
-            string stops = Routes.StopText(Routes.StopsOf(em, run.Patrol));
+            string state = em.Exists(run.Patrol) ? Routes.Describe(lang, em, run.Patrol) : L.T(lang, "status.gone");
+            string stops = Routes.StopText(lang, Routes.StopsOf(em, run.Patrol));
             if (stops.Length > 0) state += ", " + stops;
-            parts.Add(L.T("status.item", Routes.Name(run.Route, run.Patrol), run.Auto ? L.T("status.auto", L.Act(run.Act)) : "", state,
+            parts.Add(L.T(lang, "status.item", Routes.Name(lang, run.Route, run.Patrol), run.Auto ? L.T(lang, "status.auto", L.Act(lang, run.Act)) : "", state,
                           Math.Round((DateTime.UtcNow - run.State.Started).TotalMinutes)));
         }
         return ChatLines.Pack(parts, "; ");
@@ -506,7 +507,7 @@ static partial class Starter
                 Finish(em, run, $"the route didn't go back to its first stop by itself in {RunLogic.WakeMax.TotalSeconds} s ({where}); " +
                                 "start given up, auto-start skips this route for an hour");
                 FailedAt[Key(run.Patrol)] = now;
-                Chat.Send(em, run.User, () => L.T("start.wakefailed", Routes.Name(run.Route, run.Patrol)));
+                Chat.Send(em, run.User, lang => L.T(lang, "start.wakefailed", Routes.Name(lang, run.Route, run.Patrol)));
                 return true;
             }
             Arm(em, run);
@@ -521,7 +522,7 @@ static partial class Starter
         var step = RunLogic.Squad(s, now, move == "WaitForDespawn", keys, maxSquad, run.Expected);
         if (step.JustSpawned)
         {
-            Chat.Send(em, run.User, () => L.T("start.spawned", Routes.Name(run.Route, run.Patrol)));
+            Chat.Send(em, run.User, lang => L.T(lang, "start.spawned", Routes.Name(lang, run.Route, run.Patrol)));
             // Where the squad appeared, to see that a route put back to the start really sets out from there.
             var p = Routes.StopsOf(em, run.Patrol);
             var at = Caravans.PositionOf(em, units[0]);
@@ -599,16 +600,16 @@ static partial class Starter
             case RunEnd.NoSpawn:
                 Finish(em, run, $"no units after {spawnTimeout} minutes; auto-start skips this route for an hour");
                 FailedAt[Key(run.Patrol)] = now;
-                Chat.Send(em, run.User, () => L.T("start.failed", Routes.Name(run.Route, run.Patrol), spawnTimeout));
+                Chat.Send(em, run.User, lang => L.T(lang, "start.failed", Routes.Name(lang, run.Route, run.Patrol), spawnTimeout));
                 return true;
             case RunEnd.Done:
                 Finish(em, run, "route completed or caravan destroyed");
-                Chat.Send(em, run.User, () => L.T("start.done", Routes.Name(run.Route, run.Patrol)));
+                Chat.Send(em, run.User, lang => L.T(lang, "start.done", Routes.Name(lang, run.Route, run.Patrol)));
                 return true;
             case RunEnd.LoopCartLost:
                 Finish(em, run, $"the cart is gone on a route without an end; {remaining.Count} units circle on, " +
                                 "the route is free again once they freeze without players near");
-                Chat.Send(em, run.User, () => L.T("start.done", Routes.Name(run.Route, run.Patrol)));
+                Chat.Send(em, run.User, lang => L.T(lang, "start.done", Routes.Name(lang, run.Route, run.Patrol)));
                 return true;
             case RunEnd.StuckAtEnd:
                 // The game removes a squad at the last stop within seconds; this one stayed, so the mod removes it.

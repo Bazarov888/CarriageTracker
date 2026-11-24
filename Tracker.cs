@@ -28,7 +28,6 @@ static class Announcer
         string title = Settings.Color(Settings.TitleColor, "#FFC83C");
         string text = Settings.Color(Settings.TextColor, "#FFFFFF");
         string command = Settings.Color(Settings.CommandColor, "#7CFC7C");
-        string language = L.Current;
 
         var query = Queries.Get(em, "User", false, Ct<User>.RO);
         var users = query.ToEntityArray(Allocator.Temp);
@@ -47,23 +46,19 @@ static class Announcer
                 float dist = hasCharacter ? Caravans.Dist2(pos, me) : float.MaxValue;
                 if (nearby && dist > radius) continue;
                 // Each player reads it in their own language.
-                L.Use(user.PlatformId);
-                try
+                var lang = Lang.Of(user.PlatformId);
+                string name = Routes.Name(lang, route, patrol) + (acts.Count > 0 ? " (" + L.ActList(lang, acts) + ")" : "");
+                string head = $"<color={title}><b>{L.T(lang, "announce.title", name)}</b></color>";
+                if (hasCharacter)
                 {
-                    string name = Routes.Name(route, patrol) + (acts.Count > 0 ? " (" + L.ActList(acts) + ")" : "");
-                    string head = $"<color={title}><b>{L.T("announce.title", name)}</b></color>";
-                    if (hasCharacter)
-                    {
-                        // Direction first: a chat filter masked a color code followed by digits (07.11, see Settings.Color).
-                        string w = L.T("announce.where", Math.Round(dist), Caravans.Direction(pos.x - me.x, pos.z - me.z));
-                        where = (w.Length > 0 ? char.ToUpperInvariant(w[0]) + w.Substring(1) : w) + " ";
-                        int n = NumberFor(me, cart);
-                        mark = n == 1 ? ".cv m" : n > 1 ? $".cv m {n}" : ".cv l";
-                    }
-                    Chat.Send(em, user, head);
-                    Chat.Send(em, user, $"<color={text}>{where}{L.T("announce.mark")} </color><color={command}><b>{mark}</b></color>");
+                    // Direction first: a chat filter masked a color code followed by digits (07.11, see Settings.Color).
+                    string w = L.T(lang, "announce.where", Math.Round(dist), Caravans.Direction(lang, pos.x - me.x, pos.z - me.z));
+                    where = (w.Length > 0 ? char.ToUpperInvariant(w[0]) + w.Substring(1) : w) + " ";
+                    int n = NumberFor(me, cart);
+                    mark = n == 1 ? ".cv m" : n > 1 ? $".cv m {n}" : ".cv l";
                 }
-                finally { L.Use(language); }
+                Chat.Send(em, user, head);
+                Chat.Send(em, user, $"<color={text}>{where}{L.T(lang, "announce.mark")} </color><color={command}><b>{mark}</b></color>");
                 sent++;
             }
         }
@@ -101,14 +96,12 @@ static class Chat
     }
 
     // A message built in the language of that player.
-    public static void Send(EntityManager em, Entity userEntity, Func<string> text)
+    public static void Send(EntityManager em, Entity userEntity, Func<Lang, string> text)
     {
         if (userEntity == Entity.Null || !em.Exists(userEntity) || !Caravans.Has<User>(em, userEntity)) return;
         var user = em.GetComponentData<User>(userEntity);
         if (!user.IsConnected) return;
-        var saved = L.Current;
-        try { L.Use(user.PlatformId); Send(em, user, text()); }
-        finally { L.Use(saved); }
+        Send(em, user, text(Lang.Of(user.PlatformId)));
     }
 }
 
@@ -145,21 +138,21 @@ static class Greeter
         foreach (var id in greet)
         {
             var own = Languages.Of(id);
-            foreach (var lang in own != null ? new[] { own } : new[] { "en", "ru" })
-                Chat.Send(em, users[id], Line(lang));
+            foreach (var code in L.Known(own) ? new[] { own } : new[] { "en", "ru" })
+                Chat.Send(em, users[id], Line(new Lang(code)));
         }
         if (greet.Count > 0) Plugin.Trace($"CarriageTracker: welcome sent to {greet.Count} players");
     }
 
     // The server's own text from the config (WelcomeEn / WelcomeRu), or the mod's with the commands highlighted.
-    static string Line(string lang)
+    static string Line(Lang lang)
     {
-        string own = (lang == "ru" ? Settings.WelcomeRu : Settings.WelcomeEn).Value?.Trim();
+        string own = (lang.Russian ? Settings.WelcomeRu : Settings.WelcomeEn).Value?.Trim();
         if (!string.IsNullOrEmpty(own)) return own;
         string text = Settings.Color(Settings.TextColor, "#FFFFFF");
         string command = Settings.Color(Settings.CommandColor, "#7CFC7C");
         string Cmd(string c) => $"<color={command}>{c}</color>";
-        return $"<color={text}>{L.In(lang, "welcome", Cmd(".cv l"), Cmd(".cv m"), Cmd(".cv lang en"), Cmd(".cv lang ru"))}</color>";
+        return $"<color={text}>{L.T(lang, "welcome", Cmd(".cv l"), Cmd(".cv m"), Cmd(".cv lang en"), Cmd(".cv lang ru"))}</color>";
     }
 }
 
@@ -171,7 +164,7 @@ static class Tracker
     static long _lastSafetyMs = -1;
     static int _lastMissed;
     static LateText _lastStats;
-    public static string LastStats => _lastStats?.ToString() ?? L.T("stats.none");
+    public static string LastStats(Lang lang) => _lastStats?.In(lang) ?? L.T(lang, "stats.none");
     public static List<Caravans.Caravan> Current => _caravans;
     static HashSet<(int, int)> _announced = new();
     static bool _primed;
@@ -324,14 +317,14 @@ static class Tracker
         long safetyMs = _lastSafetyMs;
         double safetyAgo = Math.Round((now - _lastSafetyAt).TotalMinutes);
         int missed = _lastMissed;
-        _lastStats = new LateText(() =>
-                     L.T("stats.main", mode, ms, fastMs, scanned) +
-                     (full ? L.T("stats.full", safetyMs) : "") + ". " +
-                     L.T("stats.counts", count, empty, frozenCount) +
-                     (parked > 0 ? L.T("stats.parked", parked) : "") + ". " +
-                     L.T("stats.icons", created, removed) +
-                     (globalized > 0 ? L.T("stats.globalized", globalized) : "") + "." +
-                     (safetyMs >= 0 ? " " + L.T("stats.safety", safetyAgo, missed) : ""));
+        _lastStats = new LateText(lang =>
+                     L.T(lang, "stats.main", mode, ms, fastMs, scanned) +
+                     (full ? L.T(lang, "stats.full", safetyMs) : "") + ". " +
+                     L.T(lang, "stats.counts", count, empty, frozenCount) +
+                     (parked > 0 ? L.T(lang, "stats.parked", parked) : "") + ". " +
+                     L.T(lang, "stats.icons", created, removed) +
+                     (globalized > 0 ? L.T(lang, "stats.globalized", globalized) : "") + "." +
+                     (safetyMs >= 0 ? " " + L.T(lang, "stats.safety", safetyAgo, missed) : ""));
         if (created > 0 || removed > 0 || globalized > 0)
             Plugin.Trace($"CarriageTracker: check {ms} ms (fast {fastMs} ms over {scanned}), caravans {_caravans.Count}, " +
                                   $"empty containers {empty}, icons added {created}, removed {removed}, made global {globalized}");

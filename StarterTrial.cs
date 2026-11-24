@@ -76,7 +76,7 @@ static partial class Starter
             var pos = exists ? Caravans.PositionOf(em, t.Clone) : default;
             lines.Add($"Trial caravan of {t.Key}: patrol {t.Clone.Index}:{t.Clone.Version}{(exists ? $" at ({Math.Round(pos.x)}, {Math.Round(pos.z)})" : " (gone)")}, " +
                       $"{(IsRunning(t.Clone) ? "start running" : "start over")}, " +
-                      (exists ? $"{Routes.ActiveUnits(em, t.Clone).Count} units, {Routes.Describe(em, t.Clone)}" : ""));
+                      (exists ? $"{Routes.ActiveUnits(em, t.Clone).Count} units, {Routes.Describe(Lang.Server, em, t.Clone)}" : ""));
         }
         lines.Add(TrialLootList.Count == 0 ? "Loot to put into its container: none (the game's loot stays)."
                                            : "Loot to put into its container: " + string.Join(", ", TrialLootList.ConvertAll(l => $"{l.Amount} x {l.Name}")));
@@ -509,7 +509,7 @@ static partial class Starter
             if (!tagged) without++;
             var pos = Caravans.PositionOf(em, r.Patrol);
             lines.Add($"{r.Key}{(r.Side != null ? " " + r.Side : "")}: patrol {r.Patrol.Index}:{r.Patrol.Version} at ({Math.Round(pos.x)}, {Math.Round(pos.z)}), " +
-                      $"{(tagged ? "scene tag" : "NO scene tag")}{(IsTrial(r.Patrol) ? ", the trial caravan" : "")}, {Routes.Describe(em, r.Patrol)}");
+                      $"{(tagged ? "scene tag" : "NO scene tag")}{(IsTrial(r.Patrol) ? ", the trial caravan" : "")}, {Routes.Describe(Lang.Server, em, r.Patrol)}");
         }
         lines.Insert(0, $"Carriage patrols: {all.Count}, without the scene tag: {without}{(tag.HasValue ? "" : " (the tag type wasn't found)")}. " +
                         $"The game has {GameRoutes}; more is a copy the game kept (two patrols with the same key and the same stops; MilitiaCotton has two of its own). " +
