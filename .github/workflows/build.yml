@@ -17,19 +17,23 @@ jobs:
       # The version in CarriageTracker.csproj must be the top entry of CHANGELOG.md: a release takes its notes from
       # there, so code changes can't go out without an entry, and an entry can't be written under another version.
       - name: Version and CHANGELOG
+        # The same reading of the heading as release.yml's notes (awk on "## <version>"): a heading with anything
+        # after the version would give a release with empty notes, so it fails here.
         run: |
           v=$(grep -m1 -o '<Version>[^<]*' CarriageTracker.csproj | cut -d'>' -f2)
-          top=$(grep -m1 -oE '^## [0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | cut -c4-)
-          if [ "$v" != "$top" ]; then
+          top=$(grep -m1 '^## ' CHANGELOG.md | sed 's/^## //; s/\r$//')
+          if [ -z "$v" ] || [ "$v" != "$top" ]; then
             echo "::error::CarriageTracker.csproj has version $v, but the top entry of CHANGELOG.md is $top."
             exit 1
           fi
           echo "Version $v, CHANGELOG entry $top."
       - name: Tests of the decision logic
         run: dotnet run --project tests -c Release
-      # Warnings fail the build here (not in the csproj, so a newer SDK on a server can't break tools/deploy.sh).
+      # Compiler and NuGet warnings fail the build here, not in the csproj: tools/deploy.sh builds on the server
+      # against that server's own BepInEx assemblies, which may warn where CI doesn't. SDK warnings (NETSDK, MSB) are
+      # left out on purpose: the runner's SDK isn't pinned, and a newer one may warn about net6.0 by itself.
       - name: Build
-        run: dotnet build -c Release -warnaserror
+        run: dotnet build -c Release -p:TreatWarningsAsErrors=true
       # For trying a pull request on a server. Releases (with the DLL for download) come from release.yml.
       - name: DLL and Thunderstore package
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0

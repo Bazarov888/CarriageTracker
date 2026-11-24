@@ -34,7 +34,8 @@ table), which is where every fix is tested.
   available) → the owner merges → release.yml makes the GitHub Release → the owner deploys it on his server → after
   a day without problems he runs thunderstore.yml by hand (Actions -> thunderstore -> Run workflow, the version).
   Nothing reaches Thunderstore by itself.
-- CI (build.yml) fails on a compiler warning and when the csproj version isn't the top CHANGELOG entry.
+- CI (build.yml) fails on a compiler or NuGet warning in the mod's project (not SDK warnings, not the tests project)
+  and when the csproj version isn't exactly the top `## <version>` heading of CHANGELOG.md.
 - Before every PR an independent review by a subagent that hasn't seen the work; its findings are fixed before the
   merge. README, ARCHITECTURE.md and CHANGELOG.md are updated in the same PR.
 - On the server: `tools/deploy.sh <server folder>`, restart, then `tools/check.sh <server folder>` (version loaded,
