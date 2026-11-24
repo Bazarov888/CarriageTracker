@@ -13,8 +13,14 @@ namespace CarriageTracker;
 // are free and which one goes first is decided by RouteLogic (IsFree, Choose).
 static class AutoStart
 {
-    static readonly Dictionary<int, DateTime> LastStart = new();
-    static readonly Dictionary<string, DateTime> LastRouteStart = new();   // by patrol ("index:version")
+    // World state (WorldState): when each act and each patrol ("index:version") last got a caravan.
+    sealed class State
+    {
+        public readonly Dictionary<int, DateTime> LastStart = new();
+        public readonly Dictionary<string, DateTime> LastRouteStart = new();
+    }
+    static Dictionary<int, DateTime> LastStart => WorldState.Of<State>().LastStart;
+    static Dictionary<string, DateTime> LastRouteStart => WorldState.Of<State>().LastRouteStart;
     static bool _toldBloodcraft;
     static readonly Random Rng = new();
     static DateTime _ready = DateTime.MinValue;

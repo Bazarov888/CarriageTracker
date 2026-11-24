@@ -20,8 +20,17 @@ static class Routes
     // Cotton, about 600 m apart), by where the patrols are; null otherwise.
     public record Route(Entity Patrol, string Key, string Side = null);
 
-    static List<Route> _cache;
-    static DateTime _cacheAt;
+    // World state (WorldState): the routes found, when, the other patrols and the stop counts per patrol.
+    sealed class State
+    {
+        public List<Route> Cache;
+        public DateTime CacheAt;
+        public List<Entity> Others = new();
+        public readonly Dictionary<(int, int), int> StopCounts = new();
+    }
+    static State S => WorldState.Of<State>();
+    static List<Route> _cache { get => S.Cache; set => S.Cache = value; }
+    static DateTime _cacheAt { get => S.CacheAt; set => S.CacheAt = value; }
 
     // The next All() searches the routes again.
     internal static void Forget() => _cache = null;
@@ -31,7 +40,7 @@ static class Routes
 
     // The game's patrols that aren't carriage routes, of the last scan. The mod never writes into them, so their
     // spawn range is the game's own (Starter.NormalOf).
-    static List<Entity> _others = new();
+    static List<Entity> _others { get => S.Others; set => S.Others = value; }
     internal static IReadOnlyList<Entity> OtherPatrols => _others;
 
     // Routes don't change while the server runs, so the list is kept. It is built again every
@@ -182,7 +191,7 @@ static class Routes
     static Type _stopType;
     static bool _stopTypeLooked;
     static System.Reflection.MethodInfo _getBuffer;
-    static readonly Dictionary<(int, int), int> StopCounts = new();
+    static Dictionary<(int, int), int> StopCounts => S.StopCounts;
 
     // Number of stops of a patrol's path: length of its PatrolBusStopNode buffer. The path doesn't
     // change, so it is read once per patrol. The type is looked up by name, as its namespace may differ.

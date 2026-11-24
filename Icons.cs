@@ -170,9 +170,17 @@ static class Proxies
 
     // Markers this mod made since the server start (when), and of them those whose icon the game hasn't made yet
     // (it is made global as soon as it appears, see GlobalizeNewIcons).
-    static readonly Dictionary<(int, int), DateTime> MadeAt = new();
-    static readonly HashSet<(int, int)> Pending = new();
-    static DateTime _pendingUntil;
+    // World state (WorldState): markers made since the world started, those whose icons aren't global yet, and until when.
+    sealed class State
+    {
+        public readonly Dictionary<(int, int), DateTime> MadeAt = new();
+        public readonly HashSet<(int, int)> Pending = new();
+        public DateTime PendingUntil;
+    }
+    static State S => WorldState.Of<State>();
+    static Dictionary<(int, int), DateTime> MadeAt => S.MadeAt;
+    static HashSet<(int, int)> Pending => S.Pending;
+    static DateTime _pendingUntil { get => S.PendingUntil; set => S.PendingUntil = value; }
 
     // For the memory line (Memory): since the server start (removed markers also by why), and as seen at the last
     // check: Live = the mod's markers kept or made, InWorld = all markers of this kind
@@ -182,13 +190,6 @@ static class Proxies
     internal static int Live, InWorld;
 
     internal static bool HasPending => Pending.Count > 0;
-
-    // A new server world (Caravans.ServerWorld): entity keys of the old one are forgotten.
-    internal static void Reset()
-    {
-        MadeAt.Clear();
-        Pending.Clear();
-    }
 
     // One icon requested, of one of the given kinds.
     static bool RequestsOneOf(EntityManager em, Entity p, HashSet<int> kinds)
@@ -472,16 +473,18 @@ static class Doomed
         public bool Retried, GivenUp;
     }
 
-    static readonly Dictionary<(int, int), Entry> Queued = new();
+    // World state (WorldState): objects handed to the game's destroy pipeline.
+    sealed class State
+    {
+        public readonly Dictionary<(int, int), Entry> Queued = new();
+    }
+    static Dictionary<(int, int), Entry> Queued => WorldState.Of<State>().Queued;
     static (int, int) Key(Entity e) => (e.Index, e.Version);
 
     // Since the server start: second tries and objects given up.
     internal static long Retries, GaveUp;
 
     public static bool IsDying(Entity e) => Queued.ContainsKey(Key(e));
-
-    // A new server world (Caravans.ServerWorld): entity keys of the old one are forgotten.
-    internal static void Reset() => Queued.Clear();
 
     public static void Kill(EntityManager em, Entity e, DateTime now)
     {

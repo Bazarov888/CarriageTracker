@@ -45,19 +45,17 @@ static partial class Starter
         public readonly HashSet<(int, int)> OldContainers = new();   // containers that were there before the cart was lost
     }
 
-    static TrialCaravan _trial;
-    static readonly List<(PrefabGUID Item, int Amount, string Name)> TrialLootList = new();
-    static readonly List<string> TrialNotes = new();
+    static TrialCaravan _trial { get => S.Trial; set => S.Trial = value; }
+    static List<(PrefabGUID Item, int Amount, string Name)> TrialLootList => S.TrialLootList;
+    static List<string> TrialNotes => S.TrialNotes;
 
     // Copies handed to the game's destroy pipeline: until the game has removed them they still aren't routes.
-    static readonly List<Entity> TrialGone = new();
+    static List<Entity> TrialGone => S.TrialGone;
 
     internal static bool HasTrial => _trial != null;
     public static bool IsTrial(Entity patrol) => (_trial != null && _trial.Clone == patrol) || TrialGone.Contains(patrol);
 
     // A new server world: the old one's entities mean nothing in it.
-    internal static void TrialReset() { _trial = null; TrialGone.Clear(); }
-
     static void TrialNote(string text)
     {
         Plugin.Info($"CarriageTracker trial: {text}");

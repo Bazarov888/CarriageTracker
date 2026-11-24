@@ -42,7 +42,21 @@ static partial class Starter
     static DateTime _nextUpdate;
     static (int, int) Key(Entity e) => (e.Index, e.Version);
 
-    static readonly List<Run> Runs = new();
+    // World state (WorldState) of all the Starter files: runs, failed routes, repairs, blocked routes, the trial caravan.
+    sealed class State
+    {
+        public readonly List<Run> Runs = new();
+        public readonly Dictionary<(int, int), DateTime> FailedAt = new();
+        public readonly Dictionary<(int, int), string> RepairQueue = new();
+        public readonly HashSet<(int, int)> BlockedRoutes = new();
+        public readonly HashSet<(int, int)> WarnedRoutes = new();
+        public TrialCaravan Trial;
+        public readonly List<(PrefabGUID Item, int Amount, string Name)> TrialLootList = new();
+        public readonly List<string> TrialNotes = new();
+        public readonly List<Entity> TrialGone = new();
+    }
+    static State S => WorldState.Of<State>();
+    static List<Run> Runs => S.Runs;
     static readonly string[] TimingFields = { "RespawnTimeModifier", "MinRespawnTime", "MaxRespawnTime" };
 
     // A trial caravan (.cvdiag trial) is looked at once a second for as long as it exists, its start over or not.
@@ -53,7 +67,7 @@ static partial class Starter
     // A route whose start failed (no squad appeared, or a woken route didn't go back to its first stop) is skipped
     // by auto-start for an hour, so one broken route doesn't take every start of its act. Kept by patrol: the
     // other MilitiaCotton patrol isn't skipped with it.
-    static readonly Dictionary<(int, int), DateTime> FailedAt = new();
+    static Dictionary<(int, int), DateTime> FailedAt => S.FailedAt;
     public static bool RecentlyFailed(Entity patrol) =>
         FailedAt.TryGetValue(Key(patrol), out var t) && DateTime.UtcNow < t.AddMinutes(60);
 

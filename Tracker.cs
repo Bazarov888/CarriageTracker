@@ -158,7 +158,18 @@ static class Greeter
 
 static class Tracker
 {
-    static List<Caravans.Caravan> _caravans = new();
+    // World state (WorldState): the caravans of the last check, carts announced, objects only the full search found,
+    // whether existing carts were taken as seen and leftovers repaired after the start.
+    sealed class State
+    {
+        public List<Caravans.Caravan> Caravans = new();
+        public HashSet<(int, int)> Announced = new();
+        public bool Primed, Repaired;
+        public int RepairTries;
+        public readonly Dictionary<(int, int), Entity> Missed = new();
+    }
+    static State S => WorldState.Of<State>();
+    static List<Caravans.Caravan> _caravans { get => S.Caravans; set => S.Caravans = value; }
     static DateTime _nextSafety = DateTime.MinValue;
     static DateTime _lastSafetyAt = DateTime.MinValue;
     static long _lastSafetyMs = -1;
@@ -166,14 +177,14 @@ static class Tracker
     static LateText _lastStats;
     public static string LastStats(Lang lang) => _lastStats?.In(lang) ?? L.T(lang, "stats.none");
     public static List<Caravans.Caravan> Current => _caravans;
-    static HashSet<(int, int)> _announced = new();
-    static bool _primed;
-    static bool _repaired;
-    static int _repairTries;
+    static HashSet<(int, int)> _announced { get => S.Announced; set => S.Announced = value; }
+    static bool _primed { get => S.Primed; set => S.Primed = value; }
+    static bool _repaired { get => S.Repaired; set => S.Repaired = value; }
+    static int _repairTries { get => S.RepairTries; set => S.RepairTries = value; }
     static DateTime _lastTick = DateTime.MinValue;
     // Objects only the full search found: looked at again on every check, so they stay in the list between
     // two full searches instead of dropping out until the next one.
-    static readonly Dictionary<(int, int), Entity> _missed = new();
+    static Dictionary<(int, int), Entity> _missed => S.Missed;
 
     // Player commands (.cv l, .cv m) read the list of the last check and refresh it only if it is older than
     // MinRefresh, so commands typed in a row don't each run a whole search (audit 02.11: until 1.0.10 every
@@ -364,8 +375,14 @@ static class Loot
         public bool Empty;
     }
 
-    static readonly Dictionary<(int, int), Seen> Containers = new();
-    static readonly HashSet<(int, int)> Kept = new();
+    // World state (WorldState): loot containers seen and those whose time was kept.
+    sealed class State
+    {
+        public readonly Dictionary<(int, int), Seen> Containers = new();
+        public readonly HashSet<(int, int)> Kept = new();
+    }
+    static Dictionary<(int, int), Seen> Containers => WorldState.Of<State>().Containers;
+    static HashSet<(int, int)> Kept => WorldState.Of<State>().Kept;
     static bool _noClockLogged;
 
     static string At(float3 p) => $"({Math.Round(p.x)}, {Math.Round(p.z)})";
