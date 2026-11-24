@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.26
+
+The rewrites put off since the audit of 07.11 (Nikolai). Nothing changes for players; the mod behaves as in 1.0.25.
+
+- Every chat text is made for a language passed to it: the player of the command, each player who gets an announcement or a start message, the server's language for the log. Until now the language was set around each command and message and read from there, so a text made in between, or after a command that failed midway, came out in whatever language was set last. The middleware that did it for every command is gone.
+- Everything the mod knows about the objects of the server world (caravans, announced carts, routes, starts and repairs, blocked routes, markers, the destroy queue, loot containers, the trial caravan) is kept in one place and dropped whole if the world changes. Before, part of it was cleared by hand and the rest could keep keys of objects of the old world.
+- One check runs in seven named stages in a fixed order (read, list, repair, announce, loot and welcome, icons, stats), written down in the code, instead of one long method.
+- A repeated error that stops coming now gets one line with how many more times it came; before, that count was only in the memory line's total.
+- A marker moved with `.cvdiag movemarker` goes back to its caravan after 3 minutes even if it was moved less than 100 m.
+- `Buff_General_Spawn_Unit was still on ...` is an Info line: it shows on every start of every route and is the game's way, not a fault.
+- Dependabot opens weekly pull requests for newer GitHub Actions and NuGet packages.
+- 4 new tests (102 in all).
+
 ## 1.0.25
 
 The memory watch says more. On 14.11 it caught the jump (game heap 67 to 1393 MB in 40 seconds, no new objects in the world, nothing in the log, the mod's own work 3 ms) before the server was killed, but not who took the memory. Nothing changes for players.

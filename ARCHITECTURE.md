@@ -48,8 +48,9 @@ A change of behaviour starts with a test case.
 | `StarterAnimal.cs` | The caravan's animal: its state in the log, mortal again once its cart is lost; leftover spawn buffs removed from the squad. |
 | `Acts.cs` | Act of a player (by V Blood drunk or by level, `PlayerAct`) and of a route (by its region, `RouteActs`, or guard level for an unknown route). |
 | `Commands.cs` | Chat commands (VampireCommandFramework). |
-| `Loc.cs` | Chat texts in English and Russian; `L` answers in the language in use for the current player. Texts made at a check and read later (`Caravan.Note`, `Tracker.LastStats`, `AutoStart.LastResults`, start replies) are `LateText`, put into words when read, in the reader's language. |
-| `Languages.cs` | Each player's own language (`BepInEx/config/CarriageTracker.languages.txt`, kept by `LanguageStore`) and the VCF middleware that switches to it for every command of this mod. |
+| `Loc.cs` | Chat texts in English and Russian; every text is made for a language passed to it (`Lang`). Texts made at a check and read later (`Caravan.Note`, `Tracker.LastStats`, `AutoStart.LastResults`, start replies) are `LateText`, put into words when read, in the reader's language. |
+| `Languages.cs` | Each player's own language (`BepInEx/config/CarriageTracker.languages.txt`, kept by `LanguageStore`). |
+| `WorldState.cs` | All the mod knows about the objects of one server world, dropped whole when the world changes. |
 | `Diag.cs` | Developer commands `.cvdiag`, registered only with `EnableDiagnostics = true`: components of a caravan object, objects nearby, dumps of carts and patrols, the mod's markers and icons (`markers`), moving a marker (`movemarker`), game prefabs by a part of their name (`prefabs`), game component types by a part of their name with the objects that have them (`types`), the trial caravan (`trial`, `trialloot`, `trialinfo`, `trialclean`, `trialfind`; `StarterTrial.cs`), the stops of all patrol routes (`stops`). |
 
 ## Game model
@@ -255,6 +256,10 @@ is queued like above; if the whole pass fails it is tried again on the next chec
 
 ## Tracking and icons (`Tracker.Tick`)
 
+- One check runs in seven stages, in this order, on one reading of the world (audit 07.11, A4): read (fast search,
+  objects only the full search found, the full search when due), the caravan list, the one repair after the
+  server start, announcements, loot and welcome, icons, stats. The order is written down at `Tracker.Tick`;
+  announcements come before loot so a cart destroyed in the same check is still announced once.
 - A fast search every check, a full pass over networked entities every `SafetyScanMinutes` as a safety net.
 - A caravan is a cart on the map pulled by its horse (horse exists, on the map, within 30 m or the route is in a
   fight: `CaravanRules.Pulled`), or a container with loot.
@@ -306,6 +311,10 @@ is queued like above; if the whole pass fails it is tried again on the next chec
   timer-driven in 1.0.22 and 1.0.23 was found to loop or allocate without bound.
 - The server world, its prefab system, component types (`Ct<T>`) and the queries of every check (`Queries`) are made
   once and kept while the world exists (audit 07.11).
+- Everything keyed by the world's objects (caravan list, announced carts, routes and stop counts, starts, failed and
+  queued routes, blocked routes, the trial caravan, markers made, the destroy queue, loot containers, auto-start's
+  last starts) lives in per-part state classes held by `WorldState` (A3). A new server world drops all of them at
+  once with the queries; until 1.0.26 some were cleared by hand and the rest kept entity keys of the old world.
 - New markers' icons are made global as soon as the game creates them (`MapIconSpawnPatch`), each marker once;
   with `GlobalIcons = false` nothing is waited for.
 - Loot containers with loot get the game's removal time (`DestroyAfterDuration.EndTime`) pushed out to
@@ -320,9 +329,9 @@ is queued like above; if the whole pass fails it is tried again on the next chec
 
 - A chat message is 512 bytes at most and VCF cuts replies at 509 characters; a Russian letter is 2 bytes.
   Lists go through `ChatLines.Pack`, which splits them into lines of at most 450 bytes.
-- Language: `L` holds the language of the player being answered. `LanguageMiddleware` sets it before each
-  command of this mod and resets it after; announcements and start messages set it per recipient;
-  `Ticker.Update` resets it to the server default before background work.
+- Language: every text is made for a `Lang` passed to it (A5): a command's player (`Lang.Of(ctx)`), each recipient of
+  an announcement or a start message, `Lang.Server` for the server log. Until 1.0.26 the language was ambient, set
+  around commands and messages by a VCF middleware; a text made in between came out in whatever was set last.
 - `Greeter` (every check) sends the welcome lines to players who came into the world since the previous
   check (`Welcome.Greet`); nobody is greeted at the first check after the server start.
 - Announcements use the color name `white` for the default text color and put the direction before the distance:
@@ -344,8 +353,6 @@ keeps `Start`, auto-start and `ApplySource` from changing the world until the se
   1.0.10 it did so within about 4 s every time; a route that doesn't within 20 s is now given up.
 - Removing the spawn buff is a fix by evidence from the log, not from the game's code: the log of the next woken
   starts shows whether the buff was found and whether the animal could be killed.
-- `LanguageMiddleware` is added to VCF's global middleware list, so it sees every command of every mod; it acts
-  only on commands declared in this assembly.
 - Fields of `UnitCompositionSpawner` are set by reflection on a boxed copy (`SetField`); `GameCheck` checks at the first
   check that they all exist and turns starts off if a field needed to undo a start is missing. Failing to write such a
   field (range, respawn timers) throws before the copy is written back, so a spawner is never left half-changed; the
@@ -357,6 +364,6 @@ keeps `Start`, auto-start and `ApplySource` from changing the world until the se
 - Moving a marker instead of making it anew (R2): whether the client shows a moved marker in the new place isn't
   known; `.cvdiag movemarker` checks it. Until then markers are made anew, and the memory line counts them by why.
 - Game merchant markers (R4): see Icons above, `.cvdiag markers`.
-- Not done yet, refactoring without a change of behaviour: one state object per server world instead of static
-  collections (A3; on a new world only the entity keys of icons, markers and the destroy queue are dropped), the
-  check split into explicit stages (A4), the language passed as a parameter instead of `L.Current` (A5).
+- Done in 1.0.26: state per server world (A3), the check in stages (A4), the language as a parameter (A5).
+- Still open: an unambiguous mark for the mod's markers (A2), which needs a component the game saves and the mod
+  can set; to be found on the server.

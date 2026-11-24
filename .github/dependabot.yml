@@ -1,0 +1,12 @@
+# Weekly pull requests for newer versions of the GitHub Actions (pinned by SHA in the workflows) and of the NuGet
+# packages. Each one is a normal PR: CI builds it, the owner merges or closes it.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly

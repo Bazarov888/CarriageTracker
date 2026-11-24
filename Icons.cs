@@ -175,6 +175,7 @@ static class Proxies
     {
         public readonly Dictionary<(int, int), DateTime> MadeAt = new();
         public readonly HashSet<(int, int)> Pending = new();
+        public readonly HashSet<(int, int)> ByHand = new();
         public DateTime PendingUntil;
     }
     static State S => WorldState.Of<State>();
@@ -243,12 +244,13 @@ static class Proxies
         return attached.Count == 1 && Caravans.Has<PrefabGUID>(em, attached[0]) ? em.GetComponentData<PrefabGUID>(attached[0]).GuidHash : 0;
     }
 
-    // .cvdiag movemarker: a marker moved by hand counts as just made, so a frozen caravan's marker isn't made anew
-    // for 3 minutes (IconLogic.MovedFar) and stays where it was put while the map is looked at.
+    // .cvdiag movemarker: a marker moved by hand counts as just made and stays where it was put for 3 minutes, while
+    // the map is looked at; then it is made anew where its caravan is (IconLogic.MovedFar, byHand).
     internal static void Moved(EntityManager em, Entity p, float3 pos)
     {
         SetPos(em, p, pos);
         MadeAt[Key(p)] = DateTime.UtcNow;
+        S.ByHand.Add(Key(p));
     }
 
     // Called from the patch before MapIconSpawnSystem while new icons on our markers are expected.
@@ -309,6 +311,7 @@ static class Proxies
         foreach (var e in attached) Kill(em, e, now);
         MadeAt.Remove(Key(p));
         Pending.Remove(Key(p));
+        S.ByHand.Remove(Key(p));
         Kill(em, p, now);
         Dropped++;
         Icons.Count(DroppedBy, why);
@@ -382,7 +385,7 @@ static class Proxies
                 if (isWanted && currentKind)
                 {
                     var age = MadeAt.TryGetValue(Key(p), out var made) ? now - made : (TimeSpan?)null;
-                    moved = IconLogic.MovedFar(c.Frozen, Caravans.Dist2(Caravans.PositionOf(em, p), c.Pos), age);
+                    moved = IconLogic.MovedFar(c.Frozen, Caravans.Dist2(Caravans.PositionOf(em, p), c.Pos), age, S.ByHand.Contains(Key(p)));
                 }
                 var (act, why) = IconLogic.ForMarker(facts with { Wanted = isWanted, CurrentKind = currentKind, Moved = moved, Covered = covered.Contains(key) });
                 if (act == IconAct.Keep)
@@ -402,7 +405,7 @@ static class Proxies
         // Markers that are gone without the mod removing them (the game, another mod, an admin) are forgotten
         // (audit 07.11, R5: until 1.0.21 MadeAt kept them).
         foreach (var k in new List<(int, int)>(MadeAt.Keys))
-            if (!present.Contains(k)) { MadeAt.Remove(k); Pending.Remove(k); }
+            if (!present.Contains(k)) { MadeAt.Remove(k); Pending.Remove(k); S.ByHand.Remove(k); }
         foreach (var (p, why) in drop) removed += Destroy(em, p, now, why);
         removed += SweepOrphans(em, Icons.Kinds(), now);
 

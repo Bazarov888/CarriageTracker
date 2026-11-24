@@ -738,6 +738,44 @@ static class Program
             }
         });
 
+        // --- 1.0.26
+        Test("a marker moved by hand goes back to its caravan after 3 minutes, however near (review of 1.0.21)", () =>
+        {
+            False(IconLogic.MovedFar(true, 5, TimeSpan.FromMinutes(2), byHand: true), "2 min");
+            True(IconLogic.MovedFar(true, 5, TimeSpan.FromMinutes(3), byHand: true), "3 min, 5 m away");
+            False(IconLogic.MovedFar(true, 5, TimeSpan.FromMinutes(3)), "not by hand: under 100 m stays");
+        });
+        Test("a repeated error: written once per window, the repeats counted and given with the next full line", () =>
+        {
+            var log = new RepeatLog(TimeSpan.FromMinutes(10));
+            var t = new DateTime(2026, 11, 24, 12, 0, 0);
+            True(log.Report("a", t, out int n), "first"); Eq(0, n);
+            False(log.Report("a", t.AddMinutes(1), out _), "repeat");
+            False(log.Report("a", t.AddMinutes(2), out _), "repeat");
+            True(log.Report("a", t.AddMinutes(11), out n), "after the window"); Eq(2, n);
+            Eq(2L, log.Skipped);
+        });
+        Test("a repeated error that stops: its count comes out of Flush once, after the window", () =>
+        {
+            var log = new RepeatLog(TimeSpan.FromMinutes(10));
+            var t = new DateTime(2026, 11, 24, 12, 0, 0);
+            log.Report("a", t, out _);
+            log.Report("a", t.AddMinutes(1), out _);
+            log.Report("b", t, out _);
+            Eq(0, log.Flush(t.AddMinutes(5)).Count, "window not over");
+            var done = log.Flush(t.AddMinutes(11));
+            Eq(1, done.Count, "only the one with repeats"); Eq("a", done[0].Key); Eq(1, done[0].Count);
+            Eq(0, log.Flush(t.AddMinutes(30)).Count, "given once");
+        });
+        Test("more different errors than the limit within one window: the rest only counted", () =>
+        {
+            var log = new RepeatLog(TimeSpan.FromMinutes(10), max: 2);
+            var t = new DateTime(2026, 11, 24, 12, 0, 0);
+            True(log.Report("a", t, out _), "a"); True(log.Report("b", t, out _), "b");
+            False(log.Report("c", t, out _), "c over the limit");
+            True(log.Report("c", t.AddMinutes(11), out _), "c after the window");
+        });
+
         // --- 1.0.21: objects the game doesn't remove (DoomLogic), audit 07.11 by Nikolai, R1
         Test("an object still there after 5 min is destroyed once more, after 10 min given up", () =>
         {

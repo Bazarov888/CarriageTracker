@@ -31,29 +31,25 @@ public class Plugin : BasePlugin
     internal static void Error(string message) => Logger.LogError($"{Now} {message}");
 
     // An error that repeats (the same place, type and message) is written in full once per 10 minutes; the repeats in
-    // between are only counted, and the count is written with the next full line and in the memory line. Until
-    // 1.0.21 an error at every check wrote a full stack trace every 30 s (audit 07.11 by Nikolai, R5).
-    static readonly TimeSpan RepeatWindow = TimeSpan.FromMinutes(10);
-    static readonly Dictionary<string, (DateTime At, int Count)> Seen = new();
-    internal static long Repeats;
+    // between are only counted (RepeatLog). Until 1.0.21 an error at every check wrote a full stack trace every 30 s
+    // (audit 07.11 by Nikolai, R5).
+    static readonly RepeatLog Repeated = new(TimeSpan.FromMinutes(10));
+    internal static long Repeats => Repeated.Skipped;
 
     internal static void Fail(string where, Exception e)
     {
-        string key = $"{where}|{e.GetType().FullName}|{e.Message}";
-        var now = DateTime.UtcNow;
-        if (Seen.TryGetValue(key, out var last) && now - last.At < RepeatWindow)
+        if (!Repeated.Report($"{where}|{e.GetType().FullName}: {e.Message}", DateTime.UtcNow, out int again)) return;
+        Error($"{where}{(again > 0 ? $" (the same error {again} more times since its last full line)" : "")}: {e}");
+    }
+
+    // Repeats of errors that have stopped coming: one line each, so their count isn't lost (Memory calls it).
+    internal static void FlushRepeats()
+    {
+        foreach (var (key, count) in Repeated.Flush(DateTime.UtcNow))
         {
-            Seen[key] = (last.At, last.Count + 1);
-            Repeats++;
-            return;
+            int bar = key.IndexOf('|');
+            Warn($"{key.Substring(0, bar)}: the error \"{key.Substring(bar + 1)}\" came {count} more times after its last full line, then stopped");
         }
-        if (Seen.Count >= 100)
-            foreach (var k in new List<string>(Seen.Keys))
-                if (now - Seen[k].At >= RepeatWindow) Seen.Remove(k);
-        if (Seen.Count >= 100) { Repeats++; return; } // 100 different errors within 10 minutes: the rest only counted
-        Seen[key] = (now, 0);
-        string again = last.Count > 0 ? $" (the same error {last.Count} more times in the last {Math.Round((now - last.At).TotalMinutes)} min)" : "";
-        Error($"{where}{again}: {e}");
     }
 
     // Detailed lines (every check, every step of a started caravan) only with Debug.VerboseLog = true.

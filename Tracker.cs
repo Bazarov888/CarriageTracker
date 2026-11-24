@@ -532,6 +532,7 @@ static class Memory
         var now = DateTime.UtcNow;
         if (now < _next) return;
         _next = now + Every;
+        Plugin.FlushRepeats();
         string process;
         try
         {
