@@ -1,8 +1,9 @@
 name: thunderstore
 
 # Publishes the Thunderstore package of a GitHub Release (CarriageTracker-<version>.zip, built by release.yml)
-# to thunderstore.io, V Rising community. Runs by itself after release.yml has made a new release, or by hand
-# (Actions -> thunderstore -> Run workflow) for a release that already exists, for example the first upload.
+# to thunderstore.io, V Rising community. Runs only by hand (Actions -> thunderstore -> Run workflow, with the
+# version), once that release has run on the owner's server for a day without problems; release.yml makes the GitHub
+# Release, but no longer calls this.
 #
 # Needs, in the repository settings (Settings -> Secrets and variables -> Actions):
 # - secret THUNDERSTORE_KEY: the API token of a service account of the Thunderstore team
@@ -13,11 +14,6 @@ name: thunderstore
 # Thunderstore refuses a version it already has; publishing the same version twice fails at the upload and
 # changes nothing.
 on:
-  workflow_call:
-    inputs:
-      version:
-        type: string
-        required: true
   workflow_dispatch:
     inputs:
       version:

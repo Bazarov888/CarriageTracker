@@ -31,11 +31,15 @@ table), which is where every fix is tested.
 - `dotnet run --project tests` runs the logic tests anywhere. The mod itself needs NuGet (game reference
   assemblies); in a cloud session NuGet is blocked, so it is built by CI (build.yml, on push and PR).
 - Branch `vX.Y.Z` → PR (in a cloud session through `gh api repos/Bazarov888/CarriageTracker/pulls`, GraphQL is not
-  available) → the owner merges → release.yml makes the GitHub Release and calls thunderstore.yml.
+  available) → the owner merges → release.yml makes the GitHub Release → the owner deploys it on his server → after
+  a day without problems he runs thunderstore.yml by hand (Actions -> thunderstore -> Run workflow, the version).
+  Nothing reaches Thunderstore by itself.
+- CI (build.yml) fails on a compiler warning and when the csproj version isn't the top CHANGELOG entry.
 - Before every PR an independent review by a subagent that hasn't seen the work; its findings are fixed before the
   merge. README, ARCHITECTURE.md and CHANGELOG.md are updated in the same PR.
-- On the server: `tools/deploy.sh <server folder>`, restart, then check the log for the `loaded` and `game check`
-  lines and, 10 minutes later, the `CarriageTracker memory:` line (RAM, markers, destroy queue).
+- On the server: `tools/deploy.sh <server folder>`, restart, then `tools/check.sh <server folder>` (version loaded,
+  game check, the mod's errors and warnings since the start, memory line and watch, container, kills, the host);
+  again 10 minutes later for the first memory line.
 
 ## Working with the owner
 

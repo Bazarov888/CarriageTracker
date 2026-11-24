@@ -195,7 +195,7 @@ Without the cleanup, routes blocked by `Source = Mod` would stay without carriag
 
 ## For developers
 
-`dotnet build -c Release` builds the DLL and the Thunderstore package (`dist/`); reference assemblies come from NuGet. `dotnet run --project tests` runs the tests of the decision logic. The version lives only in `CarriageTracker.csproj`. A new version merged into `main` is released on GitHub and Thunderstore by GitHub Actions. How the mod works inside is in [ARCHITECTURE.md](https://github.com/Bazarov888/CarriageTracker/blob/main/ARCHITECTURE.md).
+`dotnet build -c Release` builds the DLL and the Thunderstore package (`dist/`); reference assemblies come from NuGet. `dotnet run --project tests` runs the tests of the decision logic. The version lives only in `CarriageTracker.csproj`. A new version merged into `main` is released on GitHub by GitHub Actions; it goes to Thunderstore by hand, after a day on a live server. `tools/deploy.sh <server folder>` builds and installs the mod on a server from this repository, `tools/check.sh <server folder>` shows in one go the version loaded, the mod's errors and warnings since the start, its memory lines, the container and the host. How the mod works inside is in [ARCHITECTURE.md](https://github.com/Bazarov888/CarriageTracker/blob/main/ARCHITECTURE.md).
 
 ## Credits
 
