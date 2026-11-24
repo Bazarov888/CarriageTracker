@@ -195,16 +195,57 @@ static class Tracker
 
     // Every time a fast search. A full pass runs on schedule or on command;
     // it also checks whether the fast search missed a caravan.
+    // What one check read from the world, handed from stage to stage.
+    sealed class Check
+    {
+        public World World;
+        public EntityManager Em;
+        public PrefabCollectionSystem Prefabs;
+        public DateTime Now;
+        public System.Diagnostics.Stopwatch Clock;
+        public List<Caravans.Found> Found;
+        public int Scanned;
+        public long FastMs;
+        public bool Full, Paused;
+    }
+
+    // One check (audit 07.11 by Nikolai, A4), every CheckSeconds and on some commands. The stages run in this
+    // order, each on the same reading of the world:
+    // 1. Read: the fast search, the objects only the full search found before, and the full search when it is due.
+    // 2. List: the caravans as players see them (.cv l), with a log line for each cart that is gone.
+    // 3. Repair: once after the server start, routes left with a start's settings by a crash get theirs back.
+    // 4. Announce: carts seen setting out. Before the loot stage, so a cart destroyed in the same check is still
+    //    announced once.
+    // 5. Loot and welcome: loot containers kept on the map, a line for players who have just come in.
+    // 6. Icons: icons and markers made, kept or removed for the list of stage 2.
+    // 7. Stats: the numbers of this check for .cv stats.
+    // Stages 4 and 5 catch their own errors; an error in any other stage ends the check and is logged by the Ticker.
     public static bool Tick(bool forceFull)
     {
         var world = Caravans.ServerWorld();
         if (world == null) return false;
         var prefabs = Caravans.Prefabs(world);
         if (prefabs == null) return false;
-        var em = world.EntityManager;
-        var now = DateTime.UtcNow;
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var check = new Check
+        {
+            World = world, Em = world.EntityManager, Prefabs = prefabs, Now = DateTime.UtcNow,
+            Clock = System.Diagnostics.Stopwatch.StartNew(), Paused = Starter.Paused,
+        };
+        Read(check, forceFull);
+        MakeList(check);
+        RepairOnce(check);
+        Announce(check);
+        LootAndWelcome(check);
+        var icons = SyncIcons(check);
+        Stats(check, icons);
+        return true;
+    }
 
+    // 1. Read.
+    static void Read(Check c, bool forceFull)
+    {
+        var em = c.Em;
+        var prefabs = c.Prefabs;
         var found = Caravans.FastScan(em, prefabs, out int scanned);
         var fast = new HashSet<(int, int)>();
         foreach (var f in found) fast.Add((f.Entity.Index, f.Entity.Version));
@@ -215,17 +256,17 @@ static class Tracker
             found.Add(again);
             fast.Add(kv.Key);
         }
-        long fastMs = sw.ElapsedMilliseconds;
+        c.FastMs = c.Clock.ElapsedMilliseconds;
 
         int safetyMin = Settings.SafetyScanMinutes.Value;
-        bool full = forceFull || (safetyMin > 0 && now >= _nextSafety);
-        if (full)
+        c.Full = forceFull || (safetyMin > 0 && c.Now >= _nextSafety);
+        if (c.Full)
         {
             var fsw = System.Diagnostics.Stopwatch.StartNew();
             var all = Caravans.FullScan(em, prefabs, out _);
             _lastSafetyMs = fsw.ElapsedMilliseconds;
-            _lastSafetyAt = now;
-            _nextSafety = now.AddMinutes(Math.Max(1, safetyMin));
+            _lastSafetyAt = c.Now;
+            _nextSafety = c.Now.AddMinutes(Math.Max(1, safetyMin));
             _lastMissed = 0;
             foreach (var f in all)
             {
@@ -237,39 +278,46 @@ static class Tracker
                 Plugin.Warn($"CarriageTracker: fast search missed {f.Kind} on route {f.Route}; it is looked at on every check from now on");
             }
         }
+        c.Found = found;
+        c.Scanned = scanned;
+    }
 
-        var built = Caravans.Build(found);
-        if (_primed) LogGone(em, _caravans, built);
+    // 2. List.
+    static void MakeList(Check c)
+    {
+        var built = Caravans.Build(c.Found);
+        if (_primed) LogGone(c.Em, _caravans, built);
         else if (built.Count > 0)
             Plugin.Info($"CarriageTracker: on the map at start: " +
-                                  string.Join("; ", built.ConvertAll(c => $"{c.Route} {c.State} at ({Math.Round(c.Pos.x)}, {Math.Round(c.Pos.z)})")));
+                                  string.Join("; ", built.ConvertAll(x => $"{x.Route} {x.State} at ({Math.Round(x.Pos.x)}, {Math.Round(x.Pos.z)})")));
         _caravans = built;
+    }
 
-        // First check after the server start: routes left with start settings by a crash get normal values back.
-        // If the pass itself fails it is tried again on the next checks (a single route that fails is queued by
-        // RepairLeftovers and retried every 5 seconds).
+    // 3. Repair. If the pass itself fails it is tried again on the next checks (a single route that fails is queued
+    // by RepairLeftovers and retried every 5 seconds).
+    static void RepairOnce(Check c)
+    {
         GameCheck.Ensure();
-        if (!_repaired && _repairTries < 10)
+        if (_repaired || _repairTries >= 10) return;
+        _repairTries++;
+        try
         {
-            _repairTries++;
-            try
-            {
-                Starter.RepairLeftovers(em, prefabs);
-                _repaired = true;
-            }
-            catch (Exception e) { Plugin.Error($"CarriageTracker: repair of routes failed (try {_repairTries} of 10): {e}"); }
+            Starter.RepairLeftovers(c.Em, c.Prefabs);
+            _repaired = true;
         }
+        catch (Exception e) { Plugin.Error($"CarriageTracker: repair of routes failed (try {_repairTries} of 10): {e}"); }
+    }
 
-        // Announcement: once per cart, when it is first seen moving on the map (the game spawned it next to
-        // a player, or the mod started it). A cart that froze and woke up again, or was hidden for a moment
-        // as left without its animal, isn't announced again. A cart parked off the map is forgotten, so if
-        // the game uses it for a new caravan, that one is announced. The first check after server start
-        // only remembers the carts already on the map.
+    // 4. Announce: once per cart, when it is first seen moving on the map (the game spawned it next to a player, or
+    // the mod started it). A cart that froze and woke up again, or was hidden for a moment as left without its
+    // animal, isn't announced again. A cart parked off the map is forgotten, so if the game uses it for a new
+    // caravan, that one is announced. The first check after server start only remembers the carts already on the map.
+    static void Announce(Check c)
+    {
         var announced = new HashSet<(int, int)>();
-        bool paused = Starter.Paused;
-        foreach (var f in found)
+        foreach (var f in c.Found)
         {
-            if (paused || f.Kind != Kind.Cart || !Caravans.OnMap(f.Pos)) continue;
+            if (c.Paused || f.Kind != Kind.Cart || !Caravans.OnMap(f.Pos)) continue;
             var key = (f.Entity.Index, f.Entity.Version);
             bool before = _announced.Contains(key);
             if (!CaravanRules.Announce(_primed, before, true, f.Frozen, f.Orphan, f.Status))
@@ -286,48 +334,55 @@ static class Tracker
             // saved, so the same cart was announced again every 30 s (review of 11.11).
             if (Settings.Announce.Value && (byMod || Settings.AnnounceVanilla.Value))
             {
-                try { Announcer.CaravanStarted(em, prefabs, f.Route, f.Patrol, f.Entity, f.Pos); }
+                try { Announcer.CaravanStarted(c.Em, c.Prefabs, f.Route, f.Patrol, f.Entity, f.Pos); }
                 catch (Exception e) { Plugin.Fail("CarriageTracker: announcement", e); }
             }
         }
         _announced = announced;
         _primed = true;
-        _lastTick = now;
-        if (!paused)
-        {
-            try { Loot.Keep(world, em, found); }
-            catch (Exception e) { Plugin.Warn($"CarriageTracker: keeping loot failed: {e.Message}"); }
-        }
-        if (!paused)
-        {
-            try { Greeter.Tick(em); }
-            catch (Exception e) { Plugin.Warn($"CarriageTracker: welcome failed: {e.Message}"); }
-        }
+        _lastTick = c.Now;
+    }
 
+    // 5. Loot and welcome.
+    static void LootAndWelcome(Check c)
+    {
+        if (c.Paused) return;
+        try { Loot.Keep(c.World, c.Em, c.Found); }
+        catch (Exception e) { Plugin.Warn($"CarriageTracker: keeping loot failed: {e.Message}"); }
+        try { Greeter.Tick(c.Em); }
+        catch (Exception e) { Plugin.Warn($"CarriageTracker: welcome failed: {e.Message}"); }
+    }
+
+    // 6. Icons. Frozen carts physically lie at (10000, 10000), so their icon goes on a separate marker where the
+    // patrol stands. Moving ones as the mode says. After .cv cleanup no icons are wanted, so all of the mod's icons
+    // and markers are removed.
+    static (int Created, int Removed, int Globalized) SyncIcons(Check c)
+    {
         bool proxyMode = Settings.ProxyMode;
         var none = new List<Caravans.Caravan>();
-        // Frozen carts physically lie at (10000, 10000), so their icon goes on a separate marker
-        // where the patrol stands. Moving ones as the mode says. After .cv cleanup no icons are wanted,
-        // so all of the mod's icons and markers are removed.
-        var withIcon = paused ? none : _caravans.FindAll(c => c.Icon);
-        var active = withIcon.FindAll(c => !c.Frozen);
-        var frozenWithIcon = withIcon.FindAll(c => c.Frozen);
-        var direct = Icons.Sync(em, prefabs, proxyMode ? none : active);
-        var viaProxy = Proxies.Sync(em, prefabs, proxyMode ? withIcon : frozenWithIcon);
-        int created = direct.Created + viaProxy.Created;
-        int removed = direct.Removed + viaProxy.Removed;
-        int globalized = direct.Globalized + viaProxy.Globalized;
-        long ms = sw.ElapsedMilliseconds;
-        int empty = found.FindAll(f => f.Kind == Kind.Container && f.Empty).Count;
-        int parked = found.FindAll(f => f.Kind != Kind.Horse && !Caravans.OnMap(f.Pos)).Count;
-        int frozenCount = _caravans.FindAll(c => c.Frozen).Count;
+        var withIcon = c.Paused ? none : _caravans.FindAll(x => x.Icon);
+        var active = withIcon.FindAll(x => !x.Frozen);
+        var frozenWithIcon = withIcon.FindAll(x => x.Frozen);
+        var direct = Icons.Sync(c.Em, c.Prefabs, proxyMode ? none : active);
+        var viaProxy = Proxies.Sync(c.Em, c.Prefabs, proxyMode ? withIcon : frozenWithIcon);
+        return (direct.Created + viaProxy.Created, direct.Removed + viaProxy.Removed, direct.Globalized + viaProxy.Globalized);
+    }
 
-        // The numbers of this check, put into words when someone reads them, in their language (LateText).
-        string mode = proxyMode ? "proxy" : "direct";
+    // 7. Stats: the numbers of this check, put into words when someone reads them, in their language (LateText).
+    static void Stats(Check c, (int Created, int Removed, int Globalized) icons)
+    {
+        long ms = c.Clock.ElapsedMilliseconds, fastMs = c.FastMs;
+        int scanned = c.Scanned;
+        bool full = c.Full;
+        int empty = c.Found.FindAll(f => f.Kind == Kind.Container && f.Empty).Count;
+        int parked = c.Found.FindAll(f => f.Kind != Kind.Horse && !Caravans.OnMap(f.Pos)).Count;
+        int frozenCount = _caravans.FindAll(x => x.Frozen).Count;
+        string mode = Settings.ProxyMode ? "proxy" : "direct";
         int count = _caravans.Count;
         long safetyMs = _lastSafetyMs;
-        double safetyAgo = Math.Round((now - _lastSafetyAt).TotalMinutes);
+        double safetyAgo = Math.Round((c.Now - _lastSafetyAt).TotalMinutes);
         int missed = _lastMissed;
+        var (created, removed, globalized) = icons;
         _lastStats = new LateText(lang =>
                      L.T(lang, "stats.main", mode, ms, fastMs, scanned) +
                      (full ? L.T(lang, "stats.full", safetyMs) : "") + ". " +
@@ -337,9 +392,8 @@ static class Tracker
                      (globalized > 0 ? L.T(lang, "stats.globalized", globalized) : "") + "." +
                      (safetyMs >= 0 ? " " + L.T(lang, "stats.safety", safetyAgo, missed) : ""));
         if (created > 0 || removed > 0 || globalized > 0)
-            Plugin.Trace($"CarriageTracker: check {ms} ms (fast {fastMs} ms over {scanned}), caravans {_caravans.Count}, " +
+            Plugin.Trace($"CarriageTracker: check {ms} ms (fast {fastMs} ms over {scanned}), caravans {count}, " +
                                   $"empty containers {empty}, icons added {created}, removed {removed}, made global {globalized}");
-        return true;
     }
 
     // A caravan that was in the list at the previous check and isn't now: written to the log with what
