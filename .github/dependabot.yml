@@ -1,12 +1,10 @@
-# Weekly pull requests for newer versions of the GitHub Actions (pinned by SHA in the workflows) and of the NuGet
-# packages. Each one is a normal PR: CI builds it, the owner merges or closes it.
+# Weekly pull requests for newer versions of the GitHub Actions, which the workflows pin by SHA. Each one is a normal
+# PR: CI builds it, the owner merges or closes it. NuGet packages are left out on purpose: the BepInEx feed is
+# declared only in the csproj, and VampireCommandFramework and the game's reference assemblies must match the game
+# build on the server, so they are bumped by hand after a test there.
 version: 2
 updates:
   - package-ecosystem: github-actions
-    directory: /
-    schedule:
-      interval: weekly
-  - package-ecosystem: nuget
     directory: /
     schedule:
       interval: weekly

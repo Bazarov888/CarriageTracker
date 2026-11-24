@@ -165,6 +165,7 @@ static class Tracker
         public List<Caravans.Caravan> Caravans = new();
         public HashSet<(int, int)> Announced = new();
         public bool Primed, Repaired;
+        public DateTime LastTick = DateTime.MinValue;
         public int RepairTries;
         public readonly Dictionary<(int, int), Entity> Missed = new();
     }
@@ -181,7 +182,7 @@ static class Tracker
     static bool _primed { get => S.Primed; set => S.Primed = value; }
     static bool _repaired { get => S.Repaired; set => S.Repaired = value; }
     static int _repairTries { get => S.RepairTries; set => S.RepairTries = value; }
-    static DateTime _lastTick = DateTime.MinValue;
+    static DateTime _lastTick { get => S.LastTick; set => S.LastTick = value; }
     // Objects only the full search found: looked at again on every check, so they stay in the list between
     // two full searches instead of dropping out until the next one.
     static Dictionary<(int, int), Entity> _missed => S.Missed;
@@ -193,8 +194,6 @@ static class Tracker
 
     public static bool Fresh() => DateTime.UtcNow - _lastTick < MinRefresh || Tick(false);
 
-    // Every time a fast search. A full pass runs on schedule or on command;
-    // it also checks whether the fast search missed a caravan.
     // What one check read from the world, handed from stage to stage.
     sealed class Check
     {
@@ -219,7 +218,8 @@ static class Tracker
     // 5. Loot and welcome: loot containers kept on the map, a line for players who have just come in.
     // 6. Icons: icons and markers made, kept or removed for the list of stage 2.
     // 7. Stats: the numbers of this check for .cv stats.
-    // Stages 4 and 5 catch their own errors; an error in any other stage ends the check and is logged by the Ticker.
+    // Stage 3 catches the error of its pass, stage 4 that of each announcement, stage 5 those of loot and welcome; an error
+    // anywhere else ends the check and is logged by the Ticker.
     public static bool Tick(bool forceFull)
     {
         var world = Caravans.ServerWorld();
@@ -241,7 +241,8 @@ static class Tracker
         return true;
     }
 
-    // 1. Read.
+    // 1. Read. Every time a fast search; a full pass on schedule or on command, which also checks whether the fast search
+    // missed a caravan.
     static void Read(Check c, bool forceFull)
     {
         var em = c.Em;

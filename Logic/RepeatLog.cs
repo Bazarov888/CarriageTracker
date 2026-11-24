@@ -5,13 +5,21 @@ namespace CarriageTracker;
 
 // Errors that repeat (audit 07.11 by Nikolai, R5): the same one (place, type, message) is written in full once per
 // window; the repeats in between are only counted. A count is never lost: it goes out with the next full line of that
-// error, or, if the error stops coming, with Flush once its window has passed (review of 1.0.21: until 1.0.26 the
-// count of an error that stopped was only in the memory line's total).
+// error, or, once the error hasn't come for a whole window, with Flush (review of 1.0.21: until 1.0.26 the count of an
+// error that stopped was only in the memory line's total).
 public sealed class RepeatLog
 {
+    sealed class Entry
+    {
+        public DateTime Written, Seen;
+        public int Count;
+    }
+
     readonly TimeSpan _window;
     readonly int _max;
-    readonly Dictionary<string, (DateTime At, int Count)> _seen = new();
+    readonly Dictionary<string, Entry> _seen = new();
+    // Counts of errors that stopped, taken out of the table to make room, waiting for Flush.
+    readonly List<(string Key, int Count)> _stopped = new();
 
     // Repeats not written in full, since the start; and those of errors past the limit of different errors.
     public long Skipped { get; private set; }
@@ -26,38 +34,46 @@ public sealed class RepeatLog
     public bool Report(string key, DateTime now, out int repeated)
     {
         repeated = 0;
-        if (_seen.TryGetValue(key, out var last) && now - last.At < _window)
+        if (_seen.TryGetValue(key, out var e))
         {
-            _seen[key] = (last.At, last.Count + 1);
-            Skipped++;
-            return false;
+            if (now - e.Written < _window)
+            {
+                e.Count++;
+                e.Seen = now;
+                Skipped++;
+                return false;
+            }
+            repeated = e.Count;
+            e.Written = e.Seen = now;
+            e.Count = 0;
+            return true;
         }
-        if (!_seen.ContainsKey(key) && _seen.Count >= _max)
+        if (_seen.Count >= _max)
         {
-            Prune(now, null);
+            Stopped(now);
             if (_seen.Count >= _max) { Skipped++; return false; } // that many different errors within one window: counted only
         }
-        repeated = last.Count;
-        _seen[key] = (now, 0);
+        _seen[key] = new Entry { Written = now, Seen = now };
         return true;
     }
 
-    // Errors whose window has passed: forgotten, and those with repeats counted are given back to be written.
+    // Errors that haven't come for a whole window: forgotten, and those with repeats counted are given back to be
+    // written, each once.
     public List<(string Key, int Count)> Flush(DateTime now)
     {
-        var done = new List<(string Key, int Count)>();
-        Prune(now, done);
+        Stopped(now);
+        var done = new List<(string Key, int Count)>(_stopped);
+        _stopped.Clear();
         return done;
     }
 
-    void Prune(DateTime now, List<(string Key, int Count)> done)
+    void Stopped(DateTime now)
     {
         foreach (var k in new List<string>(_seen.Keys))
         {
-            var v = _seen[k];
-            if (now - v.At < _window) continue;
-            if (done != null && v.Count > 0) done.Add((k, v.Count));
-            else if (done == null && v.Count > 0) continue; // its count waits for Flush
+            var e = _seen[k];
+            if (now - e.Seen < _window) continue;
+            if (e.Count > 0) _stopped.Add((k, e.Count));
             _seen.Remove(k);
         }
     }

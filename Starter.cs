@@ -51,8 +51,6 @@ static partial class Starter
         public readonly HashSet<(int, int)> BlockedRoutes = new();
         public readonly HashSet<(int, int)> WarnedRoutes = new();
         public TrialCaravan Trial;
-        public readonly List<(PrefabGUID Item, int Amount, string Name)> TrialLootList = new();
-        public readonly List<string> TrialNotes = new();
         public readonly List<Entity> TrialGone = new();
     }
     static State S => WorldState.Of<State>();

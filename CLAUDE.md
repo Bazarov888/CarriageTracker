@@ -78,4 +78,4 @@ Good remarks not done yet. Add new ones here with the date and where they came f
 - Dump of 12.11: `Script_RespawnCarriageUponLost_Data` on the animal (720 s). Check on the server whether an animal
   that lost its cart gets a new one; if it does, `RunLogic` (cart lost, `LoopCartLost`) and auto-start limits
   must know.
-- Repository: NuGet lock file (needs a restore with NuGet, so a CI step that commits it or a local machine with NuGet). Dependabot is on since 1.0.26.
+- Repository: NuGet lock file (needs a restore with NuGet, so a CI step that commits it or a local machine with NuGet). Dependabot is on since 1.0.26, for GitHub Actions only.

@@ -73,7 +73,6 @@ public class Commands
     // The player's own map marker (the one set by clicking the map), with the path to it.
     static void SetMarker(ChatCommandContext ctx, EntityManager em, float3 pos)
     {
-        var lang = Lang.Of(ctx);
         var e = em.CreateEntity(
             Ct<FromCharacter>.RW,
             Ct<SetMapMarkerEvent>.RW,

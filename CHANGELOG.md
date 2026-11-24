@@ -2,16 +2,17 @@
 
 ## 1.0.26
 
-The rewrites put off since the audit of 07.11 (Nikolai). Nothing changes for players; the mod behaves as in 1.0.25.
+The rewrites put off since the audit of 07.11 (Nikolai). In normal running (one server world for the life of the process) nothing changes for players.
 
+- Start replies kept for `.cv auto` are shown in the reader's language (they were in the server's), and the `.cv autonow` log line is in the server's language (it was in the admin's).
 - Every chat text is made for a language passed to it: the player of the command, each player who gets an announcement or a start message, the server's language for the log. Until now the language was set around each command and message and read from there, so a text made in between, or after a command that failed midway, came out in whatever language was set last. The middleware that did it for every command is gone.
-- Everything the mod knows about the objects of the server world (caravans, announced carts, routes, starts and repairs, blocked routes, markers, the destroy queue, loot containers, the trial caravan) is kept in one place and dropped whole if the world changes. Before, part of it was cleared by hand and the rest could keep keys of objects of the old world.
+- Everything the mod knows about the objects of the server world (caravans, announced carts, routes, starts and repairs, failed and blocked routes, markers, the destroy queue, loot containers, auto-start's last starts, the trial caravan) is kept in one place and dropped whole if the world changes. Before, only the markers, the destroy queue and the trial caravan were cleared on a world change; the rest kept keys of objects of the old world. The trial loot chosen with `.cvdiag trialloot` and the trial notes stay.
 - One check runs in seven named stages in a fixed order (read, list, repair, announce, loot and welcome, icons, stats), written down in the code, instead of one long method.
 - A repeated error that stops coming now gets one line with how many more times it came; before, that count was only in the memory line's total.
-- A marker moved with `.cvdiag movemarker` goes back to its caravan after 3 minutes even if it was moved less than 100 m.
+- A frozen caravan's marker moved with `.cvdiag movemarker` goes back to its caravan after 3 minutes even if it was moved less than 100 m.
 - `Buff_General_Spawn_Unit was still on ...` is an Info line: it shows on every start of every route and is the game's way, not a fault.
-- Dependabot opens weekly pull requests for newer GitHub Actions and NuGet packages.
-- 4 new tests (102 in all).
+- Dependabot opens weekly pull requests for newer GitHub Actions (NuGet packages stay by hand: they must match the game build).
+- 7 new tests (105 in all).
 
 ## 1.0.25
 

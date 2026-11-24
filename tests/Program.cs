@@ -767,6 +767,29 @@ static class Program
             Eq(1, done.Count, "only the one with repeats"); Eq("a", done[0].Key); Eq(1, done[0].Count);
             Eq(0, log.Flush(t.AddMinutes(30)).Count, "given once");
         });
+        Test("an error that still comes is not reported as stopped (review of 1.0.26)", () =>
+        {
+            var log = new RepeatLog(TimeSpan.FromMinutes(10));
+            var t = new DateTime(2026, 11, 24, 12, 0, 0);
+            log.Report("a", t, out _);
+            for (int m = 1; m <= 12; m++) log.Report("a", t.AddMinutes(m * 0.5 + 5), out _);
+            Eq(0, log.Flush(t.AddMinutes(11.5)).Count, "came 0.5 min ago");
+        });
+        Test("with the table full, an error that stopped makes room and keeps its count for Flush", () =>
+        {
+            var log = new RepeatLog(TimeSpan.FromMinutes(10), max: 2);
+            var t = new DateTime(2026, 11, 24, 12, 0, 0);
+            log.Report("a", t, out _); log.Report("a", t.AddMinutes(1), out _);
+            log.Report("b", t.AddMinutes(9), out _);
+            True(log.Report("c", t.AddMinutes(12), out _), "c gets a's place");
+            var done = log.Flush(t.AddMinutes(12));
+            Eq(1, done.Count); Eq("a", done[0].Key); Eq(1, done[0].Count);
+        });
+        Test("a marker moved by hand on a moving caravan follows the 30 m rule", () =>
+        {
+            True(IconLogic.MovedFar(false, 40, TimeSpan.FromSeconds(30), byHand: true), "40 m");
+            False(IconLogic.MovedFar(false, 10, TimeSpan.FromMinutes(5), byHand: true), "10 m");
+        });
         Test("more different errors than the limit within one window: the rest only counted", () =>
         {
             var log = new RepeatLog(TimeSpan.FromMinutes(10), max: 2);

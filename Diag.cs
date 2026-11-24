@@ -899,7 +899,7 @@ public class DiagCommands
         }
         if (bossGuid == null && (ally || stats.Length > 0)) { ctx.Reply("ally and the stats are for a boss; give its prefab."); return; }
 
-        Say(ctx, Starter.MakeTrial(em, prefabs, routes[route - 1], ctx.Event.SenderUserEntity, bossGuid, stats, ally, stopsFrom, keepTag));
+        Say(ctx, Starter.MakeTrial(Lang.Of(ctx), em, prefabs, routes[route - 1], ctx.Event.SenderUserEntity, bossGuid, stats, ally, stopsFrom, keepTag));
     }
 
     [Command("trialloot", adminOnly: true, usage: "<item prefab or clear> [amount]", description: "What the trial caravan's container gets instead of the game's loot; several items by several commands, clear = the game's loot stays")]
@@ -919,7 +919,7 @@ public class DiagCommands
     {
         var world = Caravans.ServerWorld();
         if (world == null) { ctx.Reply(L.T(Lang.Of(ctx), "world.notready")); return; }
-        Say(ctx, Starter.TrialInfo(world.EntityManager));
+        Say(ctx, Starter.TrialInfo(Lang.Of(ctx), world.EntityManager));
     }
 
     [Command("trialclean", adminOnly: true, description: "Removes the trial caravan with its squad; with a patrol id from trialfind, a copy the game kept after a restart")]
@@ -938,7 +938,7 @@ public class DiagCommands
         if (prefabs == null) { ctx.Reply(L.T(Lang.Of(ctx), "world.notready")); return; }
         var lines = Starter.TrialFind(world.EntityManager, prefabs);
         lines.Insert(0, $"CarriageTracker trial {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-        lines.AddRange(Starter.TrialInfo(world.EntityManager));
+        lines.AddRange(Starter.TrialInfo(Lang.Of(ctx), world.EntityManager));
         System.IO.File.WriteAllLines(System.IO.Path.Combine(BepInEx.Paths.BepInExRootPath, "CarriageTracker-trial.txt"), lines);
         ctx.Reply(lines[1]);
         ctx.Reply("File: BepInEx/CarriageTracker-trial.txt");

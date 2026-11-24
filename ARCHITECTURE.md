@@ -258,7 +258,8 @@ is queued like above; if the whole pass fails it is tried again on the next chec
 
 - One check runs in seven stages, in this order, on one reading of the world (audit 07.11, A4): read (fast search,
   objects only the full search found, the full search when due), the caravan list, the one repair after the
-  server start, announcements, loot and welcome, icons, stats. The order is written down at `Tracker.Tick`;
+  server start, announcements, loot and welcome, icons, stats. The order and which stages catch their own errors
+  are written down at `Tracker.Tick`;
   announcements come before loot so a cart destroyed in the same check is still announced once.
 - A fast search every check, a full pass over networked entities every `SafetyScanMinutes` as a safety net.
 - A caravan is a cart on the map pulled by its horse (horse exists, on the map, within 30 m or the route is in a
