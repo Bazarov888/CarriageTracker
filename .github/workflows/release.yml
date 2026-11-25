@@ -3,7 +3,9 @@ name: release
 # A new version in CarriageTracker.csproj on main gets its GitHub Release by itself: tag v<version>,
 # CarriageTracker.dll and the Thunderstore package attached, the notes taken from CHANGELOG.md.
 # A version that already has a release is skipped, so nothing has to be done by hand.
-# A new release then goes to Thunderstore too (thunderstore.yml), once its token and team are set.
+# Thunderstore is NOT published from here: the owner runs thunderstore.yml by hand (Actions -> thunderstore -> Run
+# workflow, with the version) once the release has run on his own server for a day. Until 1.0.26 a merge reached
+# Thunderstore, and the servers that install from it, within minutes, before anyone had run it.
 on:
   push:
     branches: [main]
@@ -14,9 +16,6 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    outputs:
-      new: ${{ steps.v.outputs.new }}
-      version: ${{ steps.v.outputs.version }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Version
@@ -58,11 +57,3 @@ jobs:
           } > notes.md
           gh release create "v$VERSION" --target "$GITHUB_SHA" --title "CarriageTracker $VERSION" --notes-file notes.md \
             bin/Release/net6.0/CarriageTracker.dll "dist/CarriageTracker-$VERSION.zip"
-
-  thunderstore:
-    needs: release
-    if: needs.release.outputs.new == 'true'
-    uses: ./.github/workflows/thunderstore.yml
-    with:
-      version: ${{ needs.release.outputs.version }}
-    secrets: inherit

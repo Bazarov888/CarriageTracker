@@ -1,23 +1,18 @@
 name: thunderstore
 
 # Publishes the Thunderstore package of a GitHub Release (CarriageTracker-<version>.zip, built by release.yml)
-# to thunderstore.io, V Rising community. Runs by itself after release.yml has made a new release, or by hand
-# (Actions -> thunderstore -> Run workflow) for a release that already exists, for example the first upload.
+# to thunderstore.io, V Rising community. Runs only by hand (Actions -> thunderstore -> Run workflow, with the
+# version), once that release has run on the owner's server for a day without problems; release.yml makes the GitHub
+# Release, but no longer calls this.
 #
 # Needs, in the repository settings (Settings -> Secrets and variables -> Actions):
 # - secret THUNDERSTORE_KEY: the API token of a service account of the Thunderstore team
 #   (thunderstore.io -> Teams -> the team -> Service Accounts). Never written anywhere else.
 # - variable THUNDERSTORE_TEAM: the team's name, the package's namespace on Thunderstore.
-# Without either the job only says so and succeeds, so releases on GitHub work as before.
 #
 # Thunderstore refuses a version it already has; publishing the same version twice fails at the upload and
 # changes nothing.
 on:
-  workflow_call:
-    inputs:
-      version:
-        type: string
-        required: true
   workflow_dispatch:
     inputs:
       version:
@@ -40,9 +35,9 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           if [ -z "$KEY" ] || [ -z "$TEAM" ]; then
-            echo "::notice::THUNDERSTORE_KEY secret or THUNDERSTORE_TEAM variable not set, not publishing to Thunderstore."
-            echo "go=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            # Run by hand to publish: a missing setting is a failure, not a green run that published nothing.
+            echo "::error::THUNDERSTORE_KEY secret or THUNDERSTORE_TEAM variable not set, nothing published."
+            exit 1
           fi
           if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "::error::Version '$VERSION' is not X.Y.Z."
