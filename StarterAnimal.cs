@@ -62,7 +62,8 @@ static partial class Starter
             DestroyUtility.Destroy(em, buff, DestroyDebugReason.TryRemoveBuff);
             if (!run.BuffsRemoved.Add(Key(unit))) continue;
             string what = Caravans.Has<PrefabGUID>(em, unit) && prefabs._PrefabLookupMap.TryGetName(em.GetComponentData<PrefabGUID>(unit), out string n) ? n : "unit";
-            Plugin.Warn($"CarriageTracker start: {Id(run)}: {name} was still on {what} {unit.Index}:{unit.Version} " +
+            // Seen on every start of every route (12.11): the game's way, not a fault; Info since 1.0.26.
+            Plugin.Info($"CarriageTracker start: {Id(run)}: {name} was still on {what} {unit.Index}:{unit.Version} " +
                         $"{Math.Round((now - run.State.SpawnedAt).TotalSeconds)} s after the squad appeared; removed it");
         }
     }

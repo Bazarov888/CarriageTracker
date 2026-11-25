@@ -24,7 +24,7 @@ public class DiagCommands
     {
         var world = Caravans.ServerWorld();
         var prefabs = world == null ? null : Caravans.Prefabs(world);
-        if (prefabs == null) { ctx.Reply(L.T("world.notready")); return; }
+        if (prefabs == null) { ctx.Reply(L.T(Lang.Of(ctx), "world.notready")); return; }
         var em = world.EntityManager;
         float3 me = Caravans.PositionOf(em, ctx.Event.SenderCharacterEntity);
 
@@ -115,7 +115,7 @@ public class DiagCommands
     {
         var world = Caravans.ServerWorld();
         var prefabs = world == null ? null : Caravans.Prefabs(world);
-        if (prefabs == null) { ctx.Reply(L.T("world.notready")); return; }
+        if (prefabs == null) { ctx.Reply(L.T(Lang.Of(ctx), "world.notready")); return; }
         var em = world.EntityManager;
         float3 me = Caravans.PositionOf(em, ctx.Event.SenderCharacterEntity);
 
@@ -169,7 +169,7 @@ public class DiagCommands
     {
         var world = Caravans.ServerWorld();
         var prefabs = world == null ? null : Caravans.Prefabs(world);
-        if (prefabs == null) { ctx.Reply(L.T("world.notready")); return; }
+        if (prefabs == null) { ctx.Reply(L.T(Lang.Of(ctx), "world.notready")); return; }
         var em = world.EntityManager;
         string Name(Entity e)
         {
@@ -249,7 +249,7 @@ public class DiagCommands
     {
         var world = Caravans.ServerWorld();
         var prefabs = world == null ? null : Caravans.Prefabs(world);
-        if (prefabs == null) { ctx.Reply(L.T("world.notready")); return; }
+        if (prefabs == null) { ctx.Reply(L.T(Lang.Of(ctx), "world.notready")); return; }
         var em = world.EntityManager;
         float3 me = Caravans.PositionOf(em, ctx.Event.SenderCharacterEntity);
         Entity best = Entity.Null;
@@ -438,7 +438,7 @@ public class DiagCommands
     {
         var world = Caravans.ServerWorld();
         var prefabs = world == null ? null : Caravans.Prefabs(world);
-        if (prefabs == null) { ctx.Reply(L.T("world.notready")); return; }
+        if (prefabs == null) { ctx.Reply(L.T(Lang.Of(ctx), "world.notready")); return; }
         var em = world.EntityManager;
         var lines = new List<string> { $"CarriageTracker dump {DateTime.Now:yyyy-MM-dd HH:mm:ss}" };
         var targets = new List<Entity>();
@@ -555,7 +555,7 @@ public class DiagCommands
     {
         var world = Caravans.ServerWorld();
         var prefabs = world == null ? null : Caravans.Prefabs(world);
-        if (prefabs == null) { ctx.Reply(L.T("world.notready")); return; }
+        if (prefabs == null) { ctx.Reply(L.T(Lang.Of(ctx), "world.notready")); return; }
         var em = world.EntityManager;
         var lines = new List<string> { $"CarriageTracker patrols {DateTime.Now:yyyy-MM-dd HH:mm:ss}" };
 
@@ -675,7 +675,7 @@ public class DiagCommands
     {
         var world = Caravans.ServerWorld();
         var prefabs = world == null ? null : Caravans.Prefabs(world);
-        if (prefabs == null) { ctx.Reply(L.T("world.notready")); return; }
+        if (prefabs == null) { ctx.Reply(L.T(Lang.Of(ctx), "world.notready")); return; }
         var em = world.EntityManager;
         bool full = mode.Equals("full", StringComparison.OrdinalIgnoreCase);
         const int fullMax = 60, listMax = 8000;
@@ -733,7 +733,7 @@ public class DiagCommands
     {
         var world = Caravans.ServerWorld();
         var prefabs = world == null ? null : Caravans.Prefabs(world);
-        if (prefabs == null) { ctx.Reply(L.T("world.notready")); return; }
+        if (prefabs == null) { ctx.Reply(L.T(Lang.Of(ctx), "world.notready")); return; }
         var em = world.EntityManager;
         max = Math.Clamp(max, 1, 20000);
         // The whole file is held in memory and written on the main thread: at most 60 types and 30000 lines of at
@@ -871,7 +871,7 @@ public class DiagCommands
     {
         var world = Caravans.ServerWorld();
         var prefabs = world == null ? null : Caravans.Prefabs(world);
-        if (prefabs == null) { ctx.Reply(L.T("world.notready")); return; }
+        if (prefabs == null) { ctx.Reply(L.T(Lang.Of(ctx), "world.notready")); return; }
         var em = world.EntityManager;
         var routes = Routes.All(em, prefabs);
         if (route < 1 || route > routes.Count) { ctx.Reply($"Route numbers are 1 to {routes.Count}, see .cv routes"); return; }
@@ -899,7 +899,7 @@ public class DiagCommands
         }
         if (bossGuid == null && (ally || stats.Length > 0)) { ctx.Reply("ally and the stats are for a boss; give its prefab."); return; }
 
-        Say(ctx, Starter.MakeTrial(em, prefabs, routes[route - 1], ctx.Event.SenderUserEntity, bossGuid, stats, ally, stopsFrom, keepTag));
+        Say(ctx, Starter.MakeTrial(Lang.Of(ctx), em, prefabs, routes[route - 1], ctx.Event.SenderUserEntity, bossGuid, stats, ally, stopsFrom, keepTag));
     }
 
     [Command("trialloot", adminOnly: true, usage: "<item prefab or clear> [amount]", description: "What the trial caravan's container gets instead of the game's loot; several items by several commands, clear = the game's loot stays")]
@@ -908,7 +908,7 @@ public class DiagCommands
         if (item.Equals("clear", StringComparison.OrdinalIgnoreCase)) { ctx.Reply(Starter.TrialLootClear()); return; }
         var world = Caravans.ServerWorld();
         var prefabs = world == null ? null : Caravans.Prefabs(world);
-        if (prefabs == null) { ctx.Reply(L.T("world.notready")); return; }
+        if (prefabs == null) { ctx.Reply(L.T(Lang.Of(ctx), "world.notready")); return; }
         if (!FindPrefab(prefabs, item, out var guid, out string name, out string problem)) { ctx.Reply(problem); return; }
         if (!name.StartsWith("Item_", StringComparison.Ordinal)) { ctx.Reply($"{name} isn't an item (Item_...)."); return; }
         ctx.Reply($"{amount} x {name}. " + Starter.TrialLoot(guid, amount, name));
@@ -918,15 +918,15 @@ public class DiagCommands
     public void TrialInfo(ChatCommandContext ctx)
     {
         var world = Caravans.ServerWorld();
-        if (world == null) { ctx.Reply(L.T("world.notready")); return; }
-        Say(ctx, Starter.TrialInfo(world.EntityManager));
+        if (world == null) { ctx.Reply(L.T(Lang.Of(ctx), "world.notready")); return; }
+        Say(ctx, Starter.TrialInfo(Lang.Of(ctx), world.EntityManager));
     }
 
     [Command("trialclean", adminOnly: true, description: "Removes the trial caravan with its squad; with a patrol id from trialfind, a copy the game kept after a restart")]
     public void TrialClean(ChatCommandContext ctx, string patrol = null)
     {
         var world = Caravans.ServerWorld();
-        if (world == null) { ctx.Reply(L.T("world.notready")); return; }
+        if (world == null) { ctx.Reply(L.T(Lang.Of(ctx), "world.notready")); return; }
         Say(ctx, Starter.RemoveTrial(world.EntityManager, patrol));
     }
 
@@ -935,10 +935,10 @@ public class DiagCommands
     {
         var world = Caravans.ServerWorld();
         var prefabs = world == null ? null : Caravans.Prefabs(world);
-        if (prefabs == null) { ctx.Reply(L.T("world.notready")); return; }
+        if (prefabs == null) { ctx.Reply(L.T(Lang.Of(ctx), "world.notready")); return; }
         var lines = Starter.TrialFind(world.EntityManager, prefabs);
         lines.Insert(0, $"CarriageTracker trial {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-        lines.AddRange(Starter.TrialInfo(world.EntityManager));
+        lines.AddRange(Starter.TrialInfo(Lang.Of(ctx), world.EntityManager));
         System.IO.File.WriteAllLines(System.IO.Path.Combine(BepInEx.Paths.BepInExRootPath, "CarriageTracker-trial.txt"), lines);
         ctx.Reply(lines[1]);
         ctx.Reply("File: BepInEx/CarriageTracker-trial.txt");
@@ -967,7 +967,7 @@ public class DiagCommands
     {
         var world = Caravans.ServerWorld();
         var prefabs = world == null ? null : Caravans.Prefabs(world);
-        if (prefabs == null) { ctx.Reply(L.T("world.notready")); return; }
+        if (prefabs == null) { ctx.Reply(L.T(Lang.Of(ctx), "world.notready")); return; }
         var em = world.EntityManager;
         var stopT = ManagedBySimpleName("PatrolBusStopNode");
         var wayT = ManagedBySimpleName("WaypointTargetBufferEntry");

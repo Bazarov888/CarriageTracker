@@ -45,19 +45,18 @@ static partial class Starter
         public readonly HashSet<(int, int)> OldContainers = new();   // containers that were there before the cart was lost
     }
 
-    static TrialCaravan _trial;
+    static TrialCaravan _trial { get => S.Trial; set => S.Trial = value; }
+    // The admin's loot choice and the trial's notes are not the world's: they stay over a world change.
     static readonly List<(PrefabGUID Item, int Amount, string Name)> TrialLootList = new();
     static readonly List<string> TrialNotes = new();
 
     // Copies handed to the game's destroy pipeline: until the game has removed them they still aren't routes.
-    static readonly List<Entity> TrialGone = new();
+    static List<Entity> TrialGone => S.TrialGone;
 
     internal static bool HasTrial => _trial != null;
     public static bool IsTrial(Entity patrol) => (_trial != null && _trial.Clone == patrol) || TrialGone.Contains(patrol);
 
     // A new server world: the old one's entities mean nothing in it.
-    internal static void TrialReset() { _trial = null; TrialGone.Clear(); }
-
     static void TrialNote(string text)
     {
         Plugin.Info($"CarriageTracker trial: {text}");
@@ -65,7 +64,7 @@ static partial class Starter
         if (TrialNotes.Count > 80) TrialNotes.RemoveRange(0, TrialNotes.Count - 80);
     }
 
-    public static List<string> TrialInfo(EntityManager em)
+    public static List<string> TrialInfo(Lang lang, EntityManager em)
     {
         var lines = new List<string>();
         var t = _trial;
@@ -76,7 +75,7 @@ static partial class Starter
             var pos = exists ? Caravans.PositionOf(em, t.Clone) : default;
             lines.Add($"Trial caravan of {t.Key}: patrol {t.Clone.Index}:{t.Clone.Version}{(exists ? $" at ({Math.Round(pos.x)}, {Math.Round(pos.z)})" : " (gone)")}, " +
                       $"{(IsRunning(t.Clone) ? "start running" : "start over")}, " +
-                      (exists ? $"{Routes.ActiveUnits(em, t.Clone).Count} units, {Routes.Describe(em, t.Clone)}" : ""));
+                      (exists ? $"{Routes.ActiveUnits(em, t.Clone).Count} units, {Routes.Describe(lang, em, t.Clone)}" : ""));
         }
         lines.Add(TrialLootList.Count == 0 ? "Loot to put into its container: none (the game's loot stays)."
                                            : "Loot to put into its container: " + string.Join(", ", TrialLootList.ConvertAll(l => $"{l.Amount} x {l.Name}")));
@@ -104,7 +103,7 @@ static partial class Starter
     // keep the replaced guard's. ally: it gets the animal's team and faction when it appears.
     // stopsFrom: the route whose stops the copy walks, null for the source's own. keepTag: the copy keeps the
     // game's StoreSubSceneEntity tag (which the mod assumes marks what the game saves with the scene).
-    public static List<string> MakeTrial(EntityManager em, PrefabCollectionSystem prefabs, Routes.Route source, Entity user,
+    public static List<string> MakeTrial(Lang lang, EntityManager em, PrefabCollectionSystem prefabs, Routes.Route source, Entity user,
                                          PrefabGUID? boss, string stats, bool ally, Routes.Route stopsFrom, bool keepTag)
     {
         var said = new List<string>();
@@ -175,7 +174,7 @@ static partial class Starter
                       (own ? "" : "; the source's squad appears somewhere other than at its patrol, left as it is"));
 
             bool started = TryStart(em, new Routes.Route(clone, source.Key), user, out var text);
-            said.Add(text.ToString());
+            said.Add(text.In(lang));
             if (!started)
             {
                 TrialNote("the copy wasn't started, it is removed");
@@ -509,7 +508,7 @@ static partial class Starter
             if (!tagged) without++;
             var pos = Caravans.PositionOf(em, r.Patrol);
             lines.Add($"{r.Key}{(r.Side != null ? " " + r.Side : "")}: patrol {r.Patrol.Index}:{r.Patrol.Version} at ({Math.Round(pos.x)}, {Math.Round(pos.z)}), " +
-                      $"{(tagged ? "scene tag" : "NO scene tag")}{(IsTrial(r.Patrol) ? ", the trial caravan" : "")}, {Routes.Describe(em, r.Patrol)}");
+                      $"{(tagged ? "scene tag" : "NO scene tag")}{(IsTrial(r.Patrol) ? ", the trial caravan" : "")}, {Routes.Describe(Lang.Server, em, r.Patrol)}");
         }
         lines.Insert(0, $"Carriage patrols: {all.Count}, without the scene tag: {without}{(tag.HasValue ? "" : " (the tag type wasn't found)")}. " +
                         $"The game has {GameRoutes}; more is a copy the game kept (two patrols with the same key and the same stops; MilitiaCotton has two of its own). " +

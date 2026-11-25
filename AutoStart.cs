@@ -13,8 +13,14 @@ namespace CarriageTracker;
 // are free and which one goes first is decided by RouteLogic (IsFree, Choose).
 static class AutoStart
 {
-    static readonly Dictionary<int, DateTime> LastStart = new();
-    static readonly Dictionary<string, DateTime> LastRouteStart = new();   // by patrol ("index:version")
+    // World state (WorldState): when each act and each patrol ("index:version") last got a caravan.
+    sealed class State
+    {
+        public readonly Dictionary<int, DateTime> LastStart = new();
+        public readonly Dictionary<string, DateTime> LastRouteStart = new();
+    }
+    static Dictionary<int, DateTime> LastStart => WorldState.Of<State>().LastStart;
+    static Dictionary<string, DateTime> LastRouteStart => WorldState.Of<State>().LastRouteStart;
     static bool _toldBloodcraft;
     static readonly Random Rng = new();
     static DateTime _ready = DateTime.MinValue;
@@ -79,24 +85,24 @@ static class AutoStart
         var results = new List<(bool Started, LateText Text)>();
         if (Starter.Paused)
         {
-            results.Add((false, new LateText(() => L.T("cleanup.paused"))));
+            results.Add((false, new LateText(lang => L.T(lang, "cleanup.paused"))));
             return results;
         }
         if (Settings.GameOnly)
         {
-            results.Add((false, new LateText(() => L.T("auto.gameonly"))));
+            results.Add((false, new LateText(lang => L.T(lang, "auto.gameonly"))));
             return results;
         }
         GameCheck.Ensure();
         if (!GameCheck.StartsOk)
         {
-            results.Add((false, new LateText(() => L.T("start.broken", GameCheck.Missing))));
+            results.Add((false, new LateText(lang => L.T(lang, "start.broken", GameCheck.Missing))));
             return results;
         }
         var online = Acts.Online(em, prefabs);
         if (online.Count == 0)
         {
-            if (force) results.Add((false, new LateText(() => L.T("auto.nobody"))));
+            if (force) results.Add((false, new LateText(lang => L.T(lang, "auto.nobody"))));
             return results;
         }
 
@@ -130,7 +136,7 @@ static class AutoStart
         foreach (int playerAct in playerActs)
         {
             var acts = ActLogic.Served(playerAct, actsWithRoutes, Settings.EmptyActMode);
-            if (acts.Count == 0) results.Add((false, new LateText(() => L.T("auto.noroutes", L.Act(playerAct)))));
+            if (acts.Count == 0) results.Add((false, new LateText(lang => L.T(lang, "auto.noroutes", L.Act(lang, playerAct)))));
             foreach (int a in acts) if (!toServe.Contains(a)) toServe.Add(a);
         }
 
@@ -142,13 +148,13 @@ static class AutoStart
             if (Starter.AutoCount() >= maxTotal)
             {
                 int total = Starter.AutoCount();
-                results.Add((false, new LateText(() => L.T("auto.maxtotal", total, maxTotal))));
+                results.Add((false, new LateText(lang => L.T(lang, "auto.maxtotal", total, maxTotal))));
                 break;
             }
             if (Starter.AutoCount(act) >= maxPerAct)
             {
                 int inAct = Starter.AutoCount(act);
-                results.Add((false, new LateText(() => L.T("auto.maxact", L.Act(act), inAct, maxPerAct))));
+                results.Add((false, new LateText(lang => L.T(lang, "auto.maxact", L.Act(lang, act), inAct, maxPerAct))));
                 continue;
             }
             var candidates = routes.FindAll(r => InAct(r, act));
@@ -163,7 +169,7 @@ static class AutoStart
             }
             if (free.Count == 0)
             {
-                results.Add((false, new LateText(() => L.T("auto.busy", L.Act(act)))));
+                results.Add((false, new LateText(lang => L.T(lang, "auto.busy", L.Act(lang, act)))));
                 continue;
             }
             int chosen = RouteLogic.Choose(snaps, Settings.ResetToStart.Value, Settings.RotatePick,
@@ -181,7 +187,7 @@ static class AutoStart
             LastStart[act] = now;
             LastRouteStart[snaps[chosen].Ident] = now;
             int freeCount = free.Count;
-            results.Add((true, new LateText(() => L.T("auto.started", Routes.Name(pick), L.Act(act), freeCount, Routes.StopText(stops)))));
+            results.Add((true, new LateText(lang => L.T(lang, "auto.started", Routes.Name(lang, pick), L.Act(lang, act), freeCount, Routes.StopText(lang, stops)))));
         }
         return results;
     }

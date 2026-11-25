@@ -19,8 +19,8 @@ static partial class Starter
     // What range each route gets is decided by SpawnRange.SourceTarget; routes the mod is starting are left
     // alone (a start sets its own range). If a squad still appears on a blocked route, the block doesn't work
     // on this game version: a warning goes to the log once per route.
-    static readonly HashSet<(int, int)> BlockedRoutes = new();
-    static readonly HashSet<(int, int)> WarnedRoutes = new();
+    static HashSet<(int, int)> BlockedRoutes => S.BlockedRoutes;
+    static HashSet<(int, int)> WarnedRoutes => S.WarnedRoutes;
 
     static void SetRangeY(EntityManager em, Entity patrol, UnitCompositionSpawner sp, float x, float y)
     {

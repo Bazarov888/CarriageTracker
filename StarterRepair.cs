@@ -105,7 +105,7 @@ static partial class Starter
 
     // Routes whose settings couldn't be given back at the end of a start: repaired again every 5 seconds
     // (from the Source pass of the Ticker) until it works.
-    static readonly Dictionary<(int, int), string> RepairQueue = new();
+    static Dictionary<(int, int), string> RepairQueue => S.RepairQueue;
 
     // A route waiting for its repair still has a start's settings: it isn't started again until repaired (TryStart),
     // since a start would save those settings as the route's own, and auto-start skips it for an hour (review of

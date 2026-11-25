@@ -21,6 +21,10 @@ table), which is where every fix is tested.
   (`IconLogic.Owned`; KindredPortals uses the same marker prefab, the default icon is the game's merchant icon).
 - Component types through `Ct<T>.RO / .RW`; per-check queries through `Queries.Get` and never disposed; the world
   through `Caravans.ServerWorld()`.
+- Anything keyed by the world's objects lives in a part's `State` class taken from `WorldState.Of<State>()`, never in a
+  plain static collection.
+- Every chat text takes a `Lang`: `Lang.Of(ctx)` in commands, `Lang.Of(platformId)` per recipient, `Lang.Server` for
+  the log. A text read later is a `LateText`, put into words with `In(lang)`.
 - Anything read or written by reflection is listed in `GameCheck`; a field a start can't be undone without is
   required (`SetField` throws).
 
@@ -56,10 +60,6 @@ Good remarks not done yet. Add new ones here with the date and where they came f
 - R4, audit 07.11: check with `.cvdiag markers` that no game merchant marker shows `mod's: yes`. If one does,
   narrow `IconLogic.Owned` (markers made in this session plus one exact clean-up pass at start) or change the
   default icon to one the game doesn't use on the map.
-- A3, audit 07.11: one state object per server world instead of static collections; dropped whole on unload or
-  a new world. Now only entity keys of icons, markers and the destroy queue are dropped on a new world.
-- A4, audit 07.11: split `Tracker.Tick` into explicit stages over one snapshot, with the order written down.
-- A5, audit 07.11: pass the language to `L.T` as a parameter instead of the ambient `L.Current`.
 - A2, audit 07.11: find an unambiguous mark for the mod's markers (a value in a saved component) so `Owned`
   needs no heuristics.
 - Memory, 12.11: the server was killed for memory twice with nobody online (1.0.22 after 13 h, 1.0.23 after 2 h;
@@ -78,7 +78,4 @@ Good remarks not done yet. Add new ones here with the date and where they came f
 - Dump of 12.11: `Script_RespawnCarriageUponLost_Data` on the animal (720 s). Check on the server whether an animal
   that lost its cart gets a new one; if it does, `RunLogic` (cart lost, `LoopCartLost`) and auto-start limits
   must know.
-- Repository: NuGet lock file and Dependabot (GitHub Actions are already pinned by SHA).
-- Review of 1.0.21: the count of a repeated error that stops is only in the memory-line total, not per error.
-- Review of 1.0.21: `.cvdiag movemarker` on a frozen caravan's marker less than 100 m away leaves it at the admin's
-  position until the caravan has moved 100 m from it.
+- Repository: NuGet lock file (needs a restore with NuGet, so a CI step that commits it or a local machine with NuGet). Dependabot is on since 1.0.26, for GitHub Actions only.

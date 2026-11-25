@@ -94,8 +94,12 @@ public static class IconLogic
     // Whether a marker is to be made anew where its caravan is now. A frozen caravan's marker: only after 100 m and
     // not before it is 3 minutes old; a marker left from before a restart has no known age and goes by distance.
     // Until 1.0.16 it was every 10 m, a new marker at almost every check, and the old ones piled up (05.11).
-    public static bool MovedFar(bool frozen, float dist, TimeSpan? age)
+    // byHand: the marker was moved by .cvdiag movemarker. A frozen caravan's is made anew where its caravan is once it
+    // is 3 minutes old, however near (review of 1.0.21: until 1.0.26 one moved less than 100 m from its caravan stayed
+    // where it was put until the caravan moved). A moving caravan's follows the 30 m rule as before.
+    public static bool MovedFar(bool frozen, float dist, TimeSpan? age, bool byHand = false)
     {
+        if (byHand && frozen) return age == null || age.Value >= FrozenMinAge;
         if (!frozen) return dist >= MoveMoving;
         if (dist < MoveFrozen) return false;
         return age == null || age.Value >= FrozenMinAge;
